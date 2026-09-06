@@ -18,12 +18,12 @@ public sealed class LinuxCapabilityProvider : IPlatformCapabilityProvider
 
     public PlatformCapabilities Capabilities => new()
     {
-        CameraProtectionLevel = CapabilityLevel.Hardware,
-        MicrophoneProtectionLevel = CapabilityLevel.Software,
-        SupportsHardwareDisable = true,
+        CameraProtectionLevel = CapabilityLevel.None,
+        MicrophoneProtectionLevel = CapabilityLevel.None,
+        SupportsHardwareDisable = false,
         SupportsSystemPolicy = false,
-        SupportsAudioMuteLock = true,
-        RequiresElevationForBlock = true,
+        SupportsAudioMuteLock = false,
+        RequiresElevationForBlock = false,
         SupportsGlobalHotkey = true,
         SupportsAutostart = true,
         SupportsSystemTray = true

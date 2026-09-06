@@ -68,15 +68,44 @@ public sealed class FileStateStore : IStateStore
     {
         lock (_lock)
         {
+            var tempPath = _filePath + $".{Guid.NewGuid():N}.tmp";
             try
             {
                 var json = JsonSerializer.Serialize(state, JsonOptions);
-                File.WriteAllText(_filePath, json);
+                using (var stream = new FileStream(
+                    tempPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    bufferSize: 4096,
+                    options: FileOptions.WriteThrough))
+                using (var writer = new StreamWriter(stream))
+                {
+                    writer.Write(json);
+                    writer.Flush();
+                    stream.Flush(flushToDisk: true);
+                }
+                File.Move(tempPath, _filePath, overwrite: true);
                 Log.Debug("Saved state to {Path}", _filePath);
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Failed to save state to {Path}", _filePath);
+                throw;
+            }
+            finally
+            {
+                if (File.Exists(tempPath))
+                {
+                    try
+                    {
+                        File.Delete(tempPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "Failed to delete state temp file {Path}", tempPath);
+                    }
+                }
             }
         }
     }

@@ -13,12 +13,13 @@ public sealed class WindowsUserPrivacyManager
 {
     private static readonly ILogger Log = Serilog.Log.ForContext<WindowsUserPrivacyManager>();
 
-    private const string ConsentStoreCameraPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam";
-    private const string ConsentStoreCameraNonPackagedPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged";
-    private const string ConsentStoreMicPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
-    private const string ConsentStoreMicNonPackagedPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged";
+    internal const string ConsentStoreCameraPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam";
+    internal const string ConsentStoreCameraNonPackagedPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam\NonPackaged";
+    internal const string ConsentStoreMicPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone";
+    internal const string ConsentStoreMicNonPackagedPath = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged";
+    internal const string ConsentValueName = "Value";
 
-    public OperationResult SetCameraUserPrivacy(BlockStatus status)
+    internal OperationResult SetCameraUserPrivacy(BlockStatus status)
     {
         Log.Information("Setting Windows user privacy for Camera: Status={Status}", status);
 
@@ -28,10 +29,10 @@ public sealed class WindowsUserPrivacyManager
             var consentValue = isBlocked ? "Deny" : "Allow";
 
             // 1. Consent Store (UWP / Windows Camera App / Packaged Apps)
-            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreCameraPath, "Value", consentValue);
+            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreCameraPath, ConsentValueName, consentValue);
 
             // 2. Consent Store NonPackaged (Desktop Apps: Chrome, Firefox, Zoom, Teams, OBS, etc.)
-            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreCameraNonPackagedPath, "Value", consentValue);
+            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreCameraNonPackagedPath, ConsentValueName, consentValue);
 
             return OperationResult.Ok();
         }
@@ -42,7 +43,7 @@ public sealed class WindowsUserPrivacyManager
         }
     }
 
-    public OperationResult SetMicrophoneUserPrivacy(BlockStatus status)
+    internal OperationResult SetMicrophoneUserPrivacy(BlockStatus status)
     {
         Log.Information("Setting Windows user privacy for Microphone: Status={Status}", status);
 
@@ -52,10 +53,10 @@ public sealed class WindowsUserPrivacyManager
             var consentValue = isBlocked ? "Deny" : "Allow";
 
             // 1. Consent Store (UWP / Voice Recorder / Packaged Apps)
-            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreMicPath, "Value", consentValue);
+            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreMicPath, ConsentValueName, consentValue);
 
             // 2. Consent Store NonPackaged (Desktop Apps: Chrome, Zoom, Teams, Discord, etc.)
-            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreMicNonPackagedPath, "Value", consentValue);
+            SetRegistryStringValue(Registry.CurrentUser, ConsentStoreMicNonPackagedPath, ConsentValueName, consentValue);
 
             return OperationResult.Ok();
         }
@@ -68,46 +69,68 @@ public sealed class WindowsUserPrivacyManager
 
     public BlockStatus GetCameraUserPrivacyStatus()
     {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(ConsentStoreCameraPath);
-            var val = key?.GetValue("Value")?.ToString();
-            return string.Equals(val, "Deny", StringComparison.OrdinalIgnoreCase)
-                ? BlockStatus.Blocked
-                : BlockStatus.Allowed;
-        }
-        catch
-        {
-            return BlockStatus.Allowed;
-        }
+        return ReadCombinedConsentStatus(
+            ConsentStoreCameraPath,
+            ConsentStoreCameraNonPackagedPath,
+            "Camera");
     }
 
     public BlockStatus GetMicrophoneUserPrivacyStatus()
     {
+        return ReadCombinedConsentStatus(
+            ConsentStoreMicPath,
+            ConsentStoreMicNonPackagedPath,
+            "Microphone");
+    }
+
+    private static BlockStatus ReadCombinedConsentStatus(
+        string packagedPath,
+        string nonPackagedPath,
+        string targetName)
+    {
         try
         {
-            using var key = Registry.CurrentUser.OpenSubKey(ConsentStoreMicPath);
-            var val = key?.GetValue("Value")?.ToString();
-            return string.Equals(val, "Deny", StringComparison.OrdinalIgnoreCase)
-                ? BlockStatus.Blocked
-                : BlockStatus.Allowed;
+            var packaged = ReadConsentValue(packagedPath);
+            var nonPackaged = ReadConsentValue(nonPackagedPath);
+            if (packaged == BlockStatus.Blocked && nonPackaged == BlockStatus.Blocked)
+                return BlockStatus.Blocked;
+            if (packaged == BlockStatus.Allowed && nonPackaged == BlockStatus.Allowed)
+                return BlockStatus.Allowed;
+
+            Log.Warning(
+                "Windows {Target} ConsentStore values disagree; protection state is partial/unknown",
+                targetName);
+            return BlockStatus.Unknown;
         }
-        catch
+        catch (Exception ex)
         {
-            return BlockStatus.Allowed;
+            Log.Error(ex, "Failed to read Windows {Target} user privacy status", targetName);
+            return BlockStatus.Unknown;
         }
+    }
+
+    private static BlockStatus ReadConsentValue(string path)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(path);
+        if (key == null || !key.GetValueNames().Contains(ConsentValueName, StringComparer.OrdinalIgnoreCase))
+            return BlockStatus.Allowed;
+        if (key.GetValueKind(ConsentValueName) != RegistryValueKind.String)
+            return BlockStatus.Unknown;
+
+        var value = key?.GetValue(ConsentValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        if (value is not string stringValue)
+            return BlockStatus.Unknown;
+        if (string.Equals(stringValue, "Deny", StringComparison.OrdinalIgnoreCase))
+            return BlockStatus.Blocked;
+        if (string.Equals(stringValue, "Allow", StringComparison.OrdinalIgnoreCase))
+            return BlockStatus.Allowed;
+        return BlockStatus.Unknown;
     }
 
     private static void SetRegistryStringValue(RegistryKey root, string subKeyPath, string valueName, string value)
     {
-        try
-        {
-            using var key = root.CreateSubKey(subKeyPath, writable: true);
-            key?.SetValue(valueName, value, RegistryValueKind.String);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "Could not set registry string value for {Path}\\{Name}", subKeyPath, valueName);
-        }
+        using var key = root.CreateSubKey(subKeyPath, writable: true)
+            ?? throw new IOException($"Could not create/open Registry key '{subKeyPath}'.");
+        key.SetValue(valueName, value, RegistryValueKind.String);
     }
 }

@@ -40,7 +40,7 @@ public sealed class LinuxSingleInstanceGuard : ISingleInstanceGuard
         catch (Exception ex)
         {
             Log.Warning(ex, "Failed to create single-instance lock file on Linux");
-            return true; // Degrade gracefully
+            return false;
         }
     }
 
@@ -52,10 +52,8 @@ public sealed class LinuxSingleInstanceGuard : ISingleInstanceGuard
             {
                 _fileStream.Dispose();
                 _fileStream = null;
-                if (File.Exists(_lockFilePath))
-                {
-                    File.Delete(_lockFilePath);
-                }
+                // Keep the inode in place. Deleting after unlocking lets two successors lock two
+                // different inodes during the close/unlink/open race.
             }
             catch (Exception ex)
             {

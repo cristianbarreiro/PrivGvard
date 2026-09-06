@@ -26,7 +26,7 @@ public sealed class WindowsProtectionProvider : IDeviceProtectionProvider
     private readonly WindowsPolicyManager _policyManager;
     private readonly WindowsUserPrivacyManager _userPrivacyManager;
     private readonly IElevationProvider _elevationProvider;
-    private readonly IStateStore _stateStore;
+    private readonly IPrivacySessionStore _privacySessionStore;
 
     public WindowsProtectionProvider(
         WindowsDeviceDetector deviceDetector,
@@ -35,7 +35,7 @@ public sealed class WindowsProtectionProvider : IDeviceProtectionProvider
         WindowsPolicyManager policyManager,
         WindowsUserPrivacyManager userPrivacyManager,
         IElevationProvider elevationProvider,
-        IStateStore stateStore)
+        IPrivacySessionStore privacySessionStore)
     {
         _deviceDetector = deviceDetector;
         _deviceController = deviceController;
@@ -43,54 +43,65 @@ public sealed class WindowsProtectionProvider : IDeviceProtectionProvider
         _policyManager = policyManager;
         _userPrivacyManager = userPrivacyManager;
         _elevationProvider = elevationProvider;
-        _stateStore = stateStore;
+        _privacySessionStore = privacySessionStore;
     }
 
     public Task<OperationResult> EnableStandardProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
     {
         Log.Information("Enabling Windows Standard Protection: Target={Target}", target);
-
-        if (target is BlockTarget.Camera or BlockTarget.Both)
+        var details = new List<DeviceOperationDetail>();
+        try
         {
-            var camResult = _userPrivacyManager.SetCameraUserPrivacy(BlockStatus.Blocked);
-            if (!camResult.Success)
-            {
-                Log.Warning("Camera user privacy block returned error: {Error}", camResult.ErrorMessage);
-                return Task.FromResult(camResult);
-            }
-        }
+            var session = LoadTrackedSession();
 
-        if (target is BlockTarget.Microphone or BlockTarget.Both)
+            // Apply each captured value independently. CompareAndApplyProtected repeats the
+            // comparison immediately before the native write.
+            foreach (var policy in GetTrackedResources<OriginalPolicyState>(
+                         session, ProtectionLayer.Standard, target).Where(resource => resource.RequiresModification))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = WindowsRegistryValueCodec.CompareAndApplyProtected(policy);
+                details.Add(ToResourceDetail(policy, result, "Windows privacy consent value"));
+                if (!result.Success)
+                    return Task.FromResult(FailForResource(result, details));
+            }
+
+            if (target is BlockTarget.Microphone or BlockTarget.Both)
+            {
+                foreach (var endpoint in GetTrackedResources<OriginalAudioEndpointState>(
+                             session,
+                             ProtectionLayer.Standard,
+                             BlockTarget.Microphone).Where(resource => resource.RequiresModification))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = CompareAndMuteEndpoint(endpoint);
+                    details.Add(ToResourceDetail(endpoint, result, "Audio capture endpoint"));
+                    if (!result.Success)
+                        return Task.FromResult(FailForResource(result, details));
+                }
+            }
+
+            return Task.FromResult(OperationResult.Ok(details));
+        }
+        catch (OperationCanceledException)
         {
-            var micResult = _userPrivacyManager.SetMicrophoneUserPrivacy(BlockStatus.Blocked);
-            _coreAudioController.SetMicrophonesMute(true);
-
-            if (!micResult.Success)
-            {
-                Log.Warning("Microphone user privacy block returned error: {Error}", micResult.ErrorMessage);
-                return Task.FromResult(micResult);
-            }
+            return Task.FromResult(OperationResult.Fail("The Standard protection operation was cancelled.", details));
         }
-
-        return Task.FromResult(OperationResult.Ok());
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected Standard protection failure after {CompletedCount} resource result(s)", details.Count);
+            return Task.FromResult(OperationResult.Fail(
+                $"Unexpected Standard protection failure: {ex.Message}",
+                details,
+                outcomeUncertain: true));
+        }
     }
 
     public Task<OperationResult> DisableStandardProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
     {
-        Log.Information("Disabling Windows Standard Protection: Target={Target}", target);
-
-        if (target is BlockTarget.Camera or BlockTarget.Both)
-        {
-            _userPrivacyManager.SetCameraUserPrivacy(BlockStatus.Allowed);
-        }
-
-        if (target is BlockTarget.Microphone or BlockTarget.Both)
-        {
-            _userPrivacyManager.SetMicrophoneUserPrivacy(BlockStatus.Allowed);
-            _coreAudioController.SetMicrophonesMute(false);
-        }
-
-        return Task.FromResult(OperationResult.Ok());
+        Log.Error("Rejected non-reversible Windows Standard teardown for Target={Target}", target);
+        return Task.FromResult(OperationResult.Fail(
+            "Windows protection must be disabled through PrivacySessionService so exact original state is restored."));
     }
 
     public async Task<OperationResult> EnableSecureProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
@@ -99,139 +110,94 @@ public sealed class WindowsProtectionProvider : IDeviceProtectionProvider
         Log.Information("Enabling Windows Secure Protection: Target={Target}, IsElevated={IsElevated}",
             target, _elevationProvider.IsElevated);
 
-        var targetStr = target.ToString().ToLowerInvariant();
-
-        // 1. If running as standard user, elevate on-demand (reusing single-prompt persistent session)
-        if (!_elevationProvider.IsElevated)
+        var details = new List<DeviceOperationDetail>();
+        try
         {
-            var policyResult = await WindowsPrivilegedExecutor.InvokeOnDemandElevationAsync("set-policy", targetStr);
-            if (!policyResult.Success)
+            var session = LoadTrackedSession();
+            foreach (var policy in GetTrackedResources<OriginalPolicyState>(
+                         session, ProtectionLayer.Secure, target).Where(resource => resource.RequiresModification))
             {
-                sw.Stop();
-                Log.Error("On-demand policy elevation failed: {Error}", policyResult.ErrorMessage);
-                return policyResult;
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = await ExecuteSecureResourceAsync("apply-policy", policy);
+                details.Add(ToResourceDetail(policy, result, "Windows machine privacy policy"));
+                if (!result.Success)
+                    return FailForResource(result, details);
             }
 
-            var devices = await GetDevicesForTargetAsync(target, cancellationToken);
-            if (devices.Count > 0)
+            foreach (var device in GetTrackedResources<OriginalDeviceState>(
+                         session, ProtectionLayer.Secure, target).Where(resource => resource.RequiresModification))
             {
-                var ids = string.Join("|", devices.Select(d => d.Id));
-                var devResult = await WindowsPrivilegedExecutor.InvokeOnDemandElevationAsync("disable-devices", ids);
-                if (!devResult.Success)
-                {
-                    Log.Warning("On-demand device disable returned warning: {Error}", devResult.ErrorMessage);
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = await ExecuteSecureResourceAsync("apply-device", device);
+                details.Add(ToResourceDetail(device, result, device.FriendlyName));
+                if (!result.Success)
+                    return FailForResource(result, details);
             }
 
             sw.Stop();
-            Log.Information("Windows Secure Protection enabled on-demand in {DurationMs}ms", sw.ElapsedMilliseconds);
-            return OperationResult.Ok();
+            Log.Information("Windows Secure Protection enabled in {DurationMs}ms", sw.ElapsedMilliseconds);
+            return OperationResult.Ok(details);
         }
-
-        // 2. If already elevated, execute directly in-process
-        var inProcessPolicyResult = _policyManager.SetPolicy(target, BlockStatus.Blocked);
-        if (!inProcessPolicyResult.Success)
+        catch (OperationCanceledException)
         {
-            sw.Stop();
-            return inProcessPolicyResult;
+            return OperationResult.Fail("The Secure protection operation was cancelled.", details);
         }
-
-        var inProcessDevices = await GetDevicesForTargetAsync(target, cancellationToken);
-        if (inProcessDevices.Count > 0)
+        catch (Exception ex)
         {
-            await _deviceController.DisableDevicesAsync(inProcessDevices);
+            Log.Error(ex, "Unexpected Secure protection failure after {CompletedCount} resource result(s)", details.Count);
+            return OperationResult.Fail(
+                $"Unexpected Secure protection failure: {ex.Message}",
+                details,
+                outcomeUncertain: true);
         }
-
-        sw.Stop();
-        Log.Information("Windows Secure Protection enabled in-process in {DurationMs}ms", sw.ElapsedMilliseconds);
-        return OperationResult.Ok();
     }
 
     public async Task<OperationResult> DisableSecureProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
     {
-        var sw = Stopwatch.StartNew();
-        Log.Information("Disabling Windows Secure Protection: Target={Target}, IsElevated={IsElevated}",
-            target, _elevationProvider.IsElevated);
-
-        var targetStr = target.ToString().ToLowerInvariant();
-
-        // 1. If running as standard user, elevate on-demand
-        if (!_elevationProvider.IsElevated)
-        {
-            var policyResult = await WindowsPrivilegedExecutor.InvokeOnDemandElevationAsync("remove-policy", targetStr);
-            if (!policyResult.Success)
-            {
-                sw.Stop();
-                Log.Error("On-demand policy removal elevation failed: {Error}", policyResult.ErrorMessage);
-                return policyResult;
-            }
-
-            var devices = await GetDevicesForTargetAsync(target, cancellationToken);
-            if (devices.Count > 0)
-            {
-                var ids = string.Join("|", devices.Select(d => d.Id));
-                var devResult = await WindowsPrivilegedExecutor.InvokeOnDemandElevationAsync("enable-devices", ids);
-                if (!devResult.Success)
-                {
-                    Log.Warning("On-demand device enable returned warning: {Error}", devResult.ErrorMessage);
-                }
-            }
-
-            sw.Stop();
-            Log.Information("Windows Secure Protection disabled on-demand in {DurationMs}ms", sw.ElapsedMilliseconds);
-            return OperationResult.Ok();
-        }
-
-        // 2. If already elevated, execute directly in-process
-        var inProcessPolicyResult = _policyManager.SetPolicy(target, BlockStatus.Allowed);
-        if (!inProcessPolicyResult.Success)
-        {
-            sw.Stop();
-            return inProcessPolicyResult;
-        }
-
-        var inProcessDevices = await GetDevicesForTargetAsync(target, cancellationToken);
-        if (inProcessDevices.Count > 0)
-        {
-            await _deviceController.EnableDevicesAsync(inProcessDevices);
-        }
-
-        sw.Stop();
-        Log.Information("Windows Secure Protection disabled in-process in {DurationMs}ms", sw.ElapsedMilliseconds);
-        return OperationResult.Ok();
+        await Task.CompletedTask;
+        Log.Error("Rejected non-reversible Windows Secure teardown for Target={Target}", target);
+        return OperationResult.Fail(
+            "Windows protection must be disabled through PrivacySessionService so exact original state is restored.");
     }
 
     public async Task<FullProtectionState> GetProtectionStateAsync(CancellationToken cancellationToken = default)
     {
-        var desired = _stateStore.Load();
-
-        // Check real hardware and policy state
+        // Derive every displayed state from current Windows state. DesiredState is a preference,
+        // never proof that a privacy mechanism is effectively active.
+        var camUserPrivacy = _userPrivacyManager.GetCameraUserPrivacyStatus();
+        var micUserPrivacy = _userPrivacyManager.GetMicrophoneUserPrivacyStatus();
         var camPolicy = _policyManager.GetCameraPolicyStatus();
         var micPolicy = _policyManager.GetMicrophonePolicyStatus();
+        var microphoneEndpoints = _coreAudioController.GetMicrophoneMuteStates();
 
         var cameras = await _deviceDetector.DetectCamerasAsync(cancellationToken);
         var mics = await _deviceDetector.DetectMicrophonesAsync(cancellationToken);
 
-        var camDeviceBlocked = cameras.Count > 0 && cameras.All(d => !d.IsEnabled);
-        var micDeviceBlocked = mics.Count > 0 && mics.All(d => !d.IsEnabled);
+        var camDeviceStateKnown = cameras.All(IsCleanOrExplicitlyDisabled);
+        var micDeviceStateKnown = mics.All(IsCleanOrExplicitlyDisabled);
+        var camDeviceBlocked = cameras.Count > 0 && cameras.All(device =>
+            device.ConfigurationProblemCode == CfgMgrInterop.CM_PROB_DISABLED);
+        var micDeviceBlocked = mics.Count > 0 && mics.All(device =>
+            device.ConfigurationProblemCode == CfgMgrInterop.CM_PROB_DISABLED);
+        var camDevicesEnabled = cameras.Count > 0 && cameras.All(device =>
+            device.ConfigurationProblemCode == 0);
+        var micDevicesEnabled = mics.Count > 0 && mics.All(device =>
+            device.ConfigurationProblemCode == 0);
 
-        // Derive verified secure state
-        var camSecureActive = camPolicy == BlockStatus.Blocked || camDeviceBlocked;
-        var micSecureActive = micPolicy == BlockStatus.Blocked || micDeviceBlocked;
+        var camSecureEvaluation = EvaluateSecureState(
+            camPolicy, cameras.Count, camDeviceStateKnown, camDeviceBlocked, camDevicesEnabled);
+        var micSecureEvaluation = EvaluateSecureState(
+            micPolicy, mics.Count, micDeviceStateKnown, micDeviceBlocked, micDevicesEnabled);
 
-        var camStandardState = desired.CameraStandard;
-        var camSecureState = camSecureActive
-            ? SecureProtectionState.Active
-            : (camStandardState == StandardProtectionState.Active
-                ? SecureProtectionState.Available
-                : SecureProtectionState.Unavailable);
-
-        var micStandardState = desired.MicrophoneStandard;
-        var micSecureState = micSecureActive
-            ? SecureProtectionState.Active
-            : (micStandardState == StandardProtectionState.Active
-                ? SecureProtectionState.Available
-                : SecureProtectionState.Unavailable);
+        var camStandardState = ToStandardState(camUserPrivacy);
+        var micStandardState = ToStandardState(EvaluateMicrophoneStandardStatus(
+            micUserPrivacy,
+            microphoneEndpoints.Success,
+            microphoneEndpoints.States));
+        var camSecureState = ToSecureState(
+            camSecureEvaluation.IsActive, camSecureEvaluation.IsUnknown, camStandardState);
+        var micSecureState = ToSecureState(
+            micSecureEvaluation.IsActive, micSecureEvaluation.IsUnknown, micStandardState);
 
         return new FullProtectionState
         {
@@ -240,25 +206,161 @@ public sealed class WindowsProtectionProvider : IDeviceProtectionProvider
                 Target = BlockTarget.Camera,
                 StandardState = camStandardState,
                 SecureState = camSecureState,
-                IsVerified = true
+                IsVerified = camStandardState != StandardProtectionState.Unknown &&
+                             camSecureState != SecureProtectionState.Unknown,
+                StatusMessage = camStandardState == StandardProtectionState.Unknown ||
+                                camSecureState == SecureProtectionState.Unknown
+                    ? "Windows camera protection state is partial or could not be fully verified."
+                    : null
             },
             Microphone = new TargetProtectionStatus
             {
                 Target = BlockTarget.Microphone,
                 StandardState = micStandardState,
                 SecureState = micSecureState,
-                IsVerified = true
+                IsVerified = micStandardState != StandardProtectionState.Unknown &&
+                             micSecureState != SecureProtectionState.Unknown,
+                StatusMessage = micStandardState == StandardProtectionState.Unknown ||
+                                micSecureState == SecureProtectionState.Unknown
+                    ? "Windows microphone protection state is partial or could not be fully verified."
+                    : null
             }
         };
     }
 
-    private async Task<List<DeviceInfo>> GetDevicesForTargetAsync(BlockTarget target, CancellationToken ct)
+    private static StandardProtectionState ToStandardState(BlockStatus status) => status switch
     {
-        var devices = new List<DeviceInfo>();
-        if (target is BlockTarget.Camera or BlockTarget.Both)
-            devices.AddRange(await _deviceDetector.DetectCamerasAsync(ct));
-        if (target is BlockTarget.Microphone or BlockTarget.Both)
-            devices.AddRange(await _deviceDetector.DetectMicrophonesAsync(ct));
-        return devices;
+        BlockStatus.Blocked => StandardProtectionState.Active,
+        BlockStatus.Allowed => StandardProtectionState.Inactive,
+        _ => StandardProtectionState.Unknown
+    };
+
+    private static bool IsCleanOrExplicitlyDisabled(DeviceInfo device) =>
+        device.IsStateKnown &&
+        device.ConfigurationProblemCode is 0 or CfgMgrInterop.CM_PROB_DISABLED;
+
+    internal static BlockStatus EvaluateMicrophoneStandardStatus(
+        BlockStatus consentStatus,
+        bool endpointQuerySucceeded,
+        IReadOnlyList<WindowsAudioEndpointMuteState> endpoints)
+    {
+        if (consentStatus == BlockStatus.Unknown || !endpointQuerySucceeded || endpoints.Count == 0)
+            return BlockStatus.Unknown;
+
+        var allMuted = endpoints.All(endpoint => endpoint.IsMuted);
+        var allUnmuted = endpoints.All(endpoint => !endpoint.IsMuted);
+        if (consentStatus == BlockStatus.Blocked && allMuted)
+            return BlockStatus.Blocked;
+        if (consentStatus == BlockStatus.Allowed && allUnmuted)
+            return BlockStatus.Allowed;
+        return BlockStatus.Unknown;
+    }
+
+    internal static (bool IsActive, bool IsUnknown) EvaluateSecureState(
+        BlockStatus policyStatus,
+        int detectedDeviceCount,
+        bool deviceStateKnown,
+        bool allDevicesDisabled,
+        bool allDevicesEnabled)
+    {
+        if (policyStatus == BlockStatus.Unknown || !deviceStateKnown || detectedDeviceCount == 0)
+            return (false, true);
+
+        if (policyStatus == BlockStatus.Blocked && allDevicesDisabled)
+            return (true, false);
+
+        if (policyStatus == BlockStatus.Allowed && allDevicesEnabled)
+            return (false, false);
+
+        // One mechanism being active is only a partial block. Never expose it as verified Secure.
+        return (false, true);
+    }
+
+    private static SecureProtectionState ToSecureState(
+        bool isActive,
+        bool isUnknown,
+        StandardProtectionState standardState)
+    {
+        if (isActive)
+            return SecureProtectionState.Active;
+        if (isUnknown)
+            return SecureProtectionState.Unknown;
+        return standardState == StandardProtectionState.Active
+            ? SecureProtectionState.Available
+            : SecureProtectionState.Unavailable;
+    }
+
+    private OperationResult CompareAndMuteEndpoint(OriginalAudioEndpointState endpoint)
+    {
+        var current = _coreAudioController.GetMicrophoneMuteState(endpoint.EndpointId);
+        if (!current.QuerySucceeded)
+            return OperationResult.Fail(current.ErrorMessage ?? "Could not inspect the audio capture endpoint.");
+        if (!current.IsPresent)
+            return OperationResult.Fail("Audio capture endpoint disappeared after its snapshot was committed.");
+        if (current.IsMuted == endpoint.ProtectedMutedState)
+        {
+            return endpoint.JournalState == PrivacyResourceJournalState.Applied &&
+                   endpoint.ModifiedByPrivLock &&
+                   !endpoint.OwnershipUncertain
+                ? OperationResult.Ok()
+                : OperationResult.Fail(
+                    "Audio apply conflict: endpoint reached the protected state after snapshot and was preserved as externally owned.");
+        }
+        if (current.IsMuted != endpoint.OriginalMutedState)
+            return OperationResult.Fail("Audio apply conflict: endpoint state changed after snapshot.");
+
+        return _coreAudioController.SetMicrophoneMute(endpoint.EndpointId, endpoint.ProtectedMutedState);
+    }
+
+    private async Task<OperationResult> ExecuteSecureResourceAsync<T>(string command, T resource)
+    {
+        var payload = WindowsPrivacySessionPlatformAdapter.EncodePayload(resource);
+        return await WindowsPrivilegedExecutor.InvokeOnDemandElevationAsync(command, payload);
+    }
+
+    private static DeviceOperationDetail ToResourceDetail(
+        PrivacyResourceState resource,
+        OperationResult result,
+        string friendlyName) =>
+        new()
+        {
+            DeviceId = resource.ResourceId,
+            FriendlyName = friendlyName,
+            Success = result.Success,
+            OutcomeUncertain = result.OutcomeUncertain,
+            ExecutionStillInFlight = result.ExecutionStillInFlight,
+            ErrorMessage = result.ErrorMessage
+        };
+
+    private static OperationResult FailForResource(
+        OperationResult result,
+        IReadOnlyList<DeviceOperationDetail> details) =>
+        OperationResult.Fail(
+            result.ErrorMessage ?? "A Windows privacy resource could not be protected.",
+            details,
+            result.OutcomeUncertain,
+            result.ExecutionStillInFlight);
+
+    private PrivacySession LoadTrackedSession()
+    {
+        var session = _privacySessionStore.Load()
+            ?? throw new InvalidOperationException("No durable privacy session exists for this Windows mutation.");
+        if (!session.IsActive || string.IsNullOrWhiteSpace(session.LastOperationId))
+            throw new InvalidOperationException("The privacy session is not active or has no prepared operation.");
+        return session;
+    }
+
+    private static IReadOnlyList<T> GetTrackedResources<T>(
+        PrivacySession session,
+        ProtectionLayer layer,
+        BlockTarget target)
+        where T : PrivacyResourceState
+    {
+        return session.Resources
+            .OfType<T>()
+            .Where(resource => resource.Layer == layer)
+            .Where(resource => target == BlockTarget.Both || resource.Target == target)
+            .Where(resource => string.Equals(resource.OperationId, session.LastOperationId, StringComparison.Ordinal))
+            .ToList();
     }
 }

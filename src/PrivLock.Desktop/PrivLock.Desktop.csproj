@@ -29,4 +29,8 @@
     <ProjectReference Include="..\PrivLock.Platform.MacOS\PrivLock.Platform.MacOS.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PrivLock.Platform.Windows.Tests" />
+  </ItemGroup>
+
 </Project>

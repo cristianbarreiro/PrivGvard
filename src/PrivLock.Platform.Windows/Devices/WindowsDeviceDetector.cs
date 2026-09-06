@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Management;
 using PrivLock.Domain.Models;
+using PrivLock.Infrastructure.Common.Logging;
 using PrivLock.Platform.Abstractions;
 using Serilog;
 
@@ -30,10 +31,9 @@ public sealed class WindowsDeviceDetector : IDeviceDetector
         var devices = QueryDevicesByClassGuid(CameraClassGuid, DeviceType.Camera);
 
         sw.Stop();
-        Log.Information("Detected {Count} camera device(s) in {DurationMs}ms: {Devices}",
+        Log.Information("Detected {Count} camera device(s) in {DurationMs}ms",
             devices.Count,
-            sw.ElapsedMilliseconds,
-            string.Join(", ", devices.Select(d => $"{d.FriendlyName} [{d.Id}]")));
+            sw.ElapsedMilliseconds);
 
         return Task.FromResult<IReadOnlyList<DeviceInfo>>(devices);
     }
@@ -50,11 +50,10 @@ public sealed class WindowsDeviceDetector : IDeviceDetector
             .ToList();
 
         sw.Stop();
-        Log.Information("Detected {Total} audio endpoint(s) in {DurationMs}ms, {CaptureCount} are capture (microphone) endpoint(s): {Devices}",
+        Log.Information("Detected {Total} audio endpoint(s) in {DurationMs}ms; {CaptureCount} are capture endpoint(s)",
             allEndpoints.Count,
             sw.ElapsedMilliseconds,
-            microphones.Count,
-            string.Join(", ", microphones.Select(d => $"{d.FriendlyName} [{d.Id}]")));
+            microphones.Count);
 
         return Task.FromResult<IReadOnlyList<DeviceInfo>>(microphones);
     }
@@ -87,12 +86,16 @@ public sealed class WindowsDeviceDetector : IDeviceDetector
 
                     if (string.IsNullOrEmpty(instanceId))
                     {
-                        Log.Warning("Skipping device with empty InstanceId: {Name}", friendlyName);
+                        Log.Warning("Skipping a privacy device with an empty InstanceId");
                         continue;
                     }
 
-                    var errorCode = obj["ConfigManagerErrorCode"];
-                    bool isEnabled = errorCode != null && Convert.ToUInt32(errorCode) != 22; // 22 = CM_PROB_DISABLED
+                    var errorCodeValue = obj["ConfigManagerErrorCode"];
+                    uint? problemCode = errorCodeValue == null ? null : Convert.ToUInt32(errorCodeValue);
+                    var stateKnown = problemCode.HasValue;
+                    // Only problem code 0 is a clean, safely reversible enabled state. Code 22 is
+                    // explicitly disabled; every other problem state is preserved and not toggled.
+                    var isEnabled = problemCode == 0;
 
                     results.Add(new DeviceInfo
                     {
@@ -103,7 +106,9 @@ public sealed class WindowsDeviceDetector : IDeviceDetector
                         PlatformIdentifier = classGuid,
                         Status = status,
                         IsPresent = true,
-                        IsEnabled = isEnabled
+                        IsEnabled = isEnabled,
+                        ConfigurationProblemCode = problemCode,
+                        IsStateKnown = stateKnown
                     });
                 }
             }
@@ -111,6 +116,10 @@ public sealed class WindowsDeviceDetector : IDeviceDetector
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to query Win32_PnPEntity for ClassGuid {ClassGuid}", classGuid);
+            CrashReporter.GenerateCrashReport(ex, "WindowsDeviceDetector.WmiEnumeration");
+            throw new InvalidOperationException(
+                "Windows privacy-device enumeration failed; no hardware mutation is safe without a complete snapshot.",
+                ex);
         }
 
         return results;

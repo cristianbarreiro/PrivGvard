@@ -91,28 +91,23 @@ public sealed class LinuxProtectionProvider : IDeviceProtectionProvider
 
     public Task<FullProtectionState> GetProtectionStateAsync(CancellationToken cancellationToken = default)
     {
-        var desired = _stateStore.Load();
-
-        var camStandard = desired.CameraStandard;
-        var camSecure = desired.CameraSecure;
-        var micStandard = desired.MicrophoneStandard;
-        var micSecure = desired.MicrophoneSecure;
-
         return Task.FromResult(new FullProtectionState
         {
             Camera = new TargetProtectionStatus
             {
                 Target = BlockTarget.Camera,
-                StandardState = camStandard,
-                SecureState = camSecure,
-                IsVerified = true
+                StandardState = StandardProtectionState.Unknown,
+                SecureState = SecureProtectionState.Unknown,
+                IsVerified = false,
+                StatusMessage = "Exact Linux privacy-state verification and recovery are not implemented."
             },
             Microphone = new TargetProtectionStatus
             {
                 Target = BlockTarget.Microphone,
-                StandardState = micStandard,
-                SecureState = micSecure,
-                IsVerified = true
+                StandardState = StandardProtectionState.Unknown,
+                SecureState = SecureProtectionState.Unknown,
+                IsVerified = false,
+                StatusMessage = "Exact Linux privacy-state verification and recovery are not implemented."
             }
         });
     }

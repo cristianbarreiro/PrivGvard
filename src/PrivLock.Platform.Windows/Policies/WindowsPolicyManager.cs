@@ -12,10 +12,10 @@ public sealed class WindowsPolicyManager
 {
     private static readonly ILogger Log = Serilog.Log.ForContext<WindowsPolicyManager>();
 
-    private const string PolicyRegistryPath = @"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy";
-    private const string CameraValueName = "LetAppsAccessCamera";
-    private const string MicrophoneValueName = "LetAppsAccessMicrophone";
-    private const int PolicyDeny = 2;
+    internal const string PolicyRegistryPath = @"SOFTWARE\Policies\Microsoft\Windows\AppPrivacy";
+    internal const string CameraValueName = "LetAppsAccessCamera";
+    internal const string MicrophoneValueName = "LetAppsAccessMicrophone";
+    internal const int PolicyDeny = 2;
 
     public BlockStatus GetCameraPolicyStatus()
     {
@@ -27,7 +27,7 @@ public sealed class WindowsPolicyManager
         return ReadPolicyValue(MicrophoneValueName);
     }
 
-    public OperationResult SetPolicy(BlockTarget target, BlockStatus status)
+    internal OperationResult SetPolicy(BlockTarget target, BlockStatus status)
     {
         Log.Information("Setting Windows AppPrivacy policy: Target={Target}, Status={Status}", target, status);
 
@@ -76,12 +76,19 @@ public sealed class WindowsPolicyManager
             if (key == null)
                 return BlockStatus.Allowed;
 
-            var value = key.GetValue(valueName);
-            if (value == null)
+            if (!key.GetValueNames().Contains(valueName, StringComparer.OrdinalIgnoreCase))
                 return BlockStatus.Allowed;
 
-            var intValue = Convert.ToInt32(value);
-            return intValue == PolicyDeny ? BlockStatus.Blocked : BlockStatus.Allowed;
+            if (key.GetValueKind(valueName) != RegistryValueKind.DWord)
+            {
+                Log.Warning("Windows policy {ValueName} has a non-DWORD Registry type", valueName);
+                return BlockStatus.Unknown;
+            }
+
+            var value = key.GetValue(valueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+            return value is int intValue
+                ? intValue == PolicyDeny ? BlockStatus.Blocked : BlockStatus.Allowed
+                : BlockStatus.Unknown;
         }
         catch (Exception ex)
         {

@@ -35,9 +35,18 @@ public sealed class SettingsService
 
         if (result.Success)
         {
-            var state = _stateStore.Load();
-            state.Autostart = enable;
-            _stateStore.Save(state);
+            try
+            {
+                var state = _stateStore.Load();
+                state.Autostart = enable;
+                _stateStore.Save(state);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Autostart changed but its application preference could not be persisted");
+                return OperationResult.Fail(
+                    $"Autostart changed, but PrivLock could not save the preference: {ex.Message}");
+            }
         }
 
         return result;

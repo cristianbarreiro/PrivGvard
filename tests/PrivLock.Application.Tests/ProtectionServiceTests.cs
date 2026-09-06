@@ -184,4 +184,60 @@ public class ProtectionServiceTests
         _storeMock.Verify(s => s.Save(It.Is<DesiredState>(
             ds => ds.CameraStandard == StandardProtectionState.Inactive && ds.CameraSecure == SecureProtectionState.Unavailable)), Times.Once);
     }
+
+    [Fact]
+    public async Task Shutdown_WaitsForAdmittedBlockAndRejectsLaterToggle()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new Mock<IDeviceProtectionProvider>();
+        provider.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                entered.TrySetResult();
+                await release.Task;
+                return OperationResult.Ok();
+            });
+        provider.Setup(p => p.DisableSecureProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+        provider.Setup(p => p.DisableStandardProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+        provider.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Active,
+                    SecureState = SecureProtectionState.Available
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+        var service = new ProtectionService(
+            provider.Object,
+            _detectorMock.Object,
+            _capabilityMock.Object,
+            _storeMock.Object);
+
+        var admitted = service.EnableStandardProtectionAsync(BlockTarget.Camera);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var shutdown = service.BeginShutdownAndRestoreAsync("WindowClose");
+        var rejected = await service.EnableStandardProtectionAsync(BlockTarget.Microphone);
+
+        Assert.False(rejected.Success);
+        Assert.Contains("shutting down", rejected.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.False(shutdown.IsCompleted);
+
+        release.TrySetResult();
+        Assert.True((await admitted).Success);
+        Assert.True((await shutdown).SafeToExit);
+        provider.Verify(
+            p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
 }

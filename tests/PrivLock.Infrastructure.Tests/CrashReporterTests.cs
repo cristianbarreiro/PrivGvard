@@ -23,11 +23,13 @@ public class CrashReporterTests : IDisposable
         var content = File.ReadAllText(reportPath);
         Assert.Contains("Test exception for crash report", content);
         Assert.Contains("InvalidOperationException", content);
+        Assert.DoesNotContain("\"machineName\"", content);
+        Assert.DoesNotContain("\"userName\"", content);
     }
 
     public void Dispose()
     {
-        try { Directory.Delete(_testCrashDir, recursive: true); }
-        catch { /* Best effort */ }
+        if (Directory.Exists(_testCrashDir))
+            Directory.Delete(_testCrashDir, recursive: true);
     }
 }

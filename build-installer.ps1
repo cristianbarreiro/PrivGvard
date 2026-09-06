@@ -1,9 +1,117 @@
 # =====================================================================
-# PrivLock — Automated Build & Packaging Pipeline
+# PrivLock - Automated Build & Packaging Pipeline
 # =====================================================================
 
 $ErrorActionPreference = "Stop"
-$ProjectRoot = $PSScriptRoot
+$PathTrimCharacters = [char[]]@(
+    [System.IO.Path]::DirectorySeparatorChar,
+    [System.IO.Path]::AltDirectorySeparatorChar
+)
+$ProjectRoot = [System.IO.Path]::GetFullPath($PSScriptRoot).TrimEnd($PathTrimCharacters)
+$ProjectRootPrefix = $ProjectRoot + [System.IO.Path]::DirectorySeparatorChar
+
+function Get-ExistingFileSystemItem([string]$LiteralPath) {
+    try {
+        return Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+    }
+    catch [System.Management.Automation.ItemNotFoundException] {
+        return $null
+    }
+}
+
+function Assert-NoReparsePointInBuildPath([string]$ResolvedPath) {
+    $CurrentPath = $ResolvedPath
+    while ($true) {
+        if (-not [System.String]::Equals(
+                $CurrentPath,
+                $ProjectRoot,
+                [System.StringComparison]::OrdinalIgnoreCase) -and
+            -not $CurrentPath.StartsWith(
+                $ProjectRootPrefix,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Build path escaped the project root while validating reparse points: $CurrentPath"
+        }
+
+        $CurrentItem = Get-ExistingFileSystemItem $CurrentPath
+        if ($null -ne $CurrentItem) {
+            if (-not $CurrentItem.PSIsContainer) {
+                throw "Expected a directory in the build path but found a file: $CurrentPath"
+            }
+            if (($CurrentItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Refusing to use a build path containing a reparse point: $CurrentPath"
+            }
+        }
+
+        if ([System.String]::Equals(
+                $CurrentPath,
+                $ProjectRoot,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            return
+        }
+
+        $ParentPath = [System.IO.Path]::GetDirectoryName($CurrentPath)
+        if ([string]::IsNullOrWhiteSpace($ParentPath) -or
+            [System.String]::Equals(
+                $ParentPath,
+                $CurrentPath,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Could not reach the project root while validating build path: $ResolvedPath"
+        }
+
+        $CurrentPath = [System.IO.Path]::GetFullPath($ParentPath).TrimEnd($PathTrimCharacters)
+    }
+}
+
+function Assert-NoReparsePointInDirectoryTree([string]$RootPath) {
+    $PendingDirectories = [System.Collections.Generic.Stack[string]]::new()
+    $PendingDirectories.Push($RootPath)
+
+    while ($PendingDirectories.Count -gt 0) {
+        $CurrentPath = $PendingDirectories.Pop()
+        $CurrentItem = Get-Item -LiteralPath $CurrentPath -Force -ErrorAction Stop
+        if (-not $CurrentItem.PSIsContainer) {
+            throw "Expected a build output directory but found a file: $CurrentPath"
+        }
+        if (($CurrentItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to recursively delete a reparse point: $CurrentPath"
+        }
+
+        $Children = @(Get-ChildItem -LiteralPath $CurrentPath -Force -ErrorAction Stop)
+        foreach ($Child in $Children) {
+            if (($Child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Refusing to recursively delete a directory tree containing a reparse point: $($Child.FullName)"
+            }
+            if ($Child.PSIsContainer) {
+                $PendingDirectories.Push($Child.FullName)
+            }
+        }
+    }
+}
+
+function Remove-VerifiedBuildDirectory([string]$Path, [string]$ExpectedRelativePath) {
+    $ResolvedPath = [System.IO.Path]::GetFullPath($Path).TrimEnd($PathTrimCharacters)
+    $ExpectedPath = [System.IO.Path]::GetFullPath(
+        (Join-Path $ProjectRoot $ExpectedRelativePath)
+    ).TrimEnd($PathTrimCharacters)
+
+    if (-not $ExpectedPath.StartsWith(
+            $ProjectRootPrefix,
+            [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not [System.String]::Equals(
+            $ResolvedPath,
+            $ExpectedPath,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to recursively delete unverified build directory: $ResolvedPath"
+    }
+
+    Assert-NoReparsePointInBuildPath $ResolvedPath
+
+    $BuildItem = Get-ExistingFileSystemItem $ResolvedPath
+    if ($null -ne $BuildItem) {
+        Assert-NoReparsePointInDirectoryTree $ResolvedPath
+        Remove-Item -LiteralPath $ResolvedPath -Recurse -Force -ErrorAction Stop
+    }
+}
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " Building & Packaging PrivLock Installer" -ForegroundColor Cyan
@@ -19,19 +127,25 @@ if ($LASTEXITCODE -ne 0) {
 
 # 2. Clean previous build outputs
 Write-Host "`n[2/4] Cleaning previous output directories..." -ForegroundColor Yellow
-$PublishDir = "$ProjectRoot\publish_out"
-$InstallerOutDir = "$ProjectRoot\installer_out"
+$PublishRoot = Join-Path $ProjectRoot "publish_out"
+$PublishDir = Join-Path $PublishRoot "win-x64"
+$InstallerOutDir = Join-Path $ProjectRoot "installer_out"
 
-# Terminate running process instances to release file locks before publishing
-Get-Process -Name "PrivLock", "CamMicBlocker" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# A forced termination would bypass the reversible-session shutdown coordinator and can strand
+# camera/microphone state. Require the operator to exit PrivLock normally instead.
+$RunningPrivLock = Get-Process -Name "PrivLock", "CamMicBlocker" -ErrorAction SilentlyContinue
+if ($RunningPrivLock) {
+    Write-Error "PrivLock is running. Exit it normally from the tray/window so privacy state is restored, then rerun this script."
+    exit 1
+}
 
-if (Test-Path $PublishDir) { Remove-Item $PublishDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (Test-Path $InstallerOutDir) { Remove-Item $InstallerOutDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (-not (Test-Path $InstallerOutDir)) { New-Item -ItemType Directory -Path $InstallerOutDir | Out-Null }
+Remove-VerifiedBuildDirectory $PublishDir "publish_out\win-x64"
+Remove-VerifiedBuildDirectory $InstallerOutDir "installer_out"
+if (-not (Test-Path -LiteralPath $InstallerOutDir)) { New-Item -ItemType Directory -Path $InstallerOutDir | Out-Null }
 
 # 3. Publish Single-File Self-Contained Binary
 Write-Host "`n[3/4] Publishing single-file self-contained win-x64 release..." -ForegroundColor Yellow
-dotnet publish "$ProjectRoot\src\CamMicBlocker\CamMicBlocker.csproj" `
+dotnet publish "$ProjectRoot\src\PrivLock.Desktop\PrivLock.Desktop.csproj" `
     -c Release `
     -r win-x64 `
     --self-contained `
@@ -42,6 +156,17 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "Publishing failed! Aborting installer build."
     exit 1
 }
+
+$PublishedExecutable = Join-Path $PublishDir "PrivLock.exe"
+if (-not (Test-Path -LiteralPath $PublishedExecutable -PathType Leaf)) {
+    Write-Error "Publishing completed without producing the expected executable: $PublishedExecutable"
+    exit 1
+}
+
+# Inno recursively consumes this directory. Revalidate it after publish so a reparse point cannot
+# make the installer capture files from outside the intended RID-specific output directory.
+Assert-NoReparsePointInBuildPath $PublishDir
+Assert-NoReparsePointInDirectoryTree $PublishDir
 
 # 4. Locate Inno Setup Compiler (ISCC.exe) and compile setup executable
 Write-Host "`n[4/4] Compiling Windows Setup Installer with Inno Setup..." -ForegroundColor Yellow
@@ -80,14 +205,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 5. Create Portable ZIP Package
-Write-Host "`n[5/5] Creating Portable ZIP package..." -ForegroundColor Yellow
-$ZipPath = "$InstallerOutDir\PrivLock-Portable-1.0.0.zip"
-if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
-Compress-Archive -Path "$PublishDir\*" -DestinationPath $ZipPath -Force
-
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host " SUCCESS! Release assets generated successfully at:" -ForegroundColor Green
 Write-Host " Setup:    $InstallerOutDir\PrivLock-Setup-1.0.0.exe" -ForegroundColor White
-Write-Host " Portable: $InstallerOutDir\PrivLock-Portable-1.0.0.zip" -ForegroundColor White
 Write-Host "==========================================================" -ForegroundColor Green

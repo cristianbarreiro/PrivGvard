@@ -73,23 +73,23 @@ public sealed class MacOSProtectionProvider : IDeviceProtectionProvider
 
     public Task<FullProtectionState> GetProtectionStateAsync(CancellationToken cancellationToken = default)
     {
-        var desired = _stateStore.Load();
-
         return Task.FromResult(new FullProtectionState
         {
             Camera = new TargetProtectionStatus
             {
                 Target = BlockTarget.Camera,
-                StandardState = desired.CameraStandard,
-                SecureState = desired.CameraSecure,
-                IsVerified = true
+                StandardState = StandardProtectionState.Unknown,
+                SecureState = SecureProtectionState.Unknown,
+                IsVerified = false,
+                StatusMessage = "Exact macOS privacy-state verification and recovery are not implemented."
             },
             Microphone = new TargetProtectionStatus
             {
                 Target = BlockTarget.Microphone,
-                StandardState = desired.MicrophoneStandard,
-                SecureState = desired.MicrophoneSecure,
-                IsVerified = true
+                StandardState = StandardProtectionState.Unknown,
+                SecureState = SecureProtectionState.Unknown,
+                IsVerified = false,
+                StatusMessage = "Exact macOS privacy-state verification and recovery are not implemented."
             }
         });
     }

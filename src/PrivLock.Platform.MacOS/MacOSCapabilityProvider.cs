@@ -19,11 +19,11 @@ public sealed class MacOSCapabilityProvider : IPlatformCapabilityProvider
 
     public PlatformCapabilities Capabilities => new()
     {
-        CameraProtectionLevel = CapabilityLevel.Software,
-        MicrophoneProtectionLevel = CapabilityLevel.Hardware,
+        CameraProtectionLevel = CapabilityLevel.None,
+        MicrophoneProtectionLevel = CapabilityLevel.None,
         SupportsHardwareDisable = false,
         SupportsSystemPolicy = false,
-        SupportsAudioMuteLock = true,
+        SupportsAudioMuteLock = false,
         RequiresElevationForBlock = false,
         SupportsGlobalHotkey = true,
         SupportsAutostart = true,

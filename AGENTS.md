@@ -59,14 +59,14 @@ Before committing changes to hardware controllers, policy managers, sound server
    - Disabling/enabling PnP device nodes in `CfgMgr32.dll` via device instance IDs.
    - Modifying `/dev/video*` permissions on Linux when requested.
 3. **Why Single-Binary Self-Invocation is Superior**:
-   Instead of a permanent elevated daemon or a separate binary (`PrivLock.Elevated.exe`), `PrivLock` invokes its own executable (`Environment.ProcessPath`) with an internal flag `--privileged-exec <command> <arg>` using Windows UAC `Verb="runas"` or Linux `pkexec`.
+   Instead of a permanent elevated daemon or a separate binary (`PrivLock.Elevated.exe`), `PrivLock` invokes its own executable (`Environment.ProcessPath`) as a transient authenticated `--privileged-worker` using Windows UAC `Verb="runas"` or Linux `pkexec`. The legacy public `--privileged-exec` mutation dispatcher is prohibited because it bypasses the recovery journal.
 4. **Communication & IPC**:
    - Short-lived transient execution (~50ms lifetime).
-   - Parameters passed via strictly validated CLI arguments.
-   - Result communicated back via a structured JSON temp file (`PrivLock_res_*.json`), deserialized, and deleted immediately.
+   - The CLI carries only a random pipe name, parent PID, and 256-bit nonce.
+   - Commands/results use a bounded, versioned named-pipe protocol with ACL, nonce, request correlation, and bilateral kernel PID verification; there is no result temp file.
 5. **Minimizing Attack Surface**:
    - The main application runs with unprivileged `asInvoker` token.
-   - The `--privileged-exec` dispatcher implements a closed whitelist (`set-policy`, `remove-policy`, `disable-devices`, `enable-devices`).
+   - The authenticated worker implements a closed per-resource whitelist (`apply-policy`, `restore-policy`, `apply-device`, `restore-device`, `verify-policy-ownership`, `verify-device-ownership`, `ping`) and revalidates canonical targets immediately before native calls.
    - Strict parameter validation prevents command injection.
 6. **Zero Unnecessary Privilege Retention**:
    The elevated transient process exits immediately upon completing the API call. The user-facing application never retains administrative privileges.
@@ -123,7 +123,7 @@ src/
 │   └── App.axaml                     # Fluent Dark theme & styles
 │
 └── PrivLock.Desktop/                 # Single Executable Host
-    ├── Program.cs                    # Platform DI composition root & --privileged-exec dispatcher
+    ├── Program.cs                    # Platform DI composition root & authenticated --privileged-worker dispatcher
     └── app.manifest                  # requestedExecutionLevel = asInvoker
 ```
 

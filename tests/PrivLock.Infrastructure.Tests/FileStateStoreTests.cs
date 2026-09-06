@@ -69,7 +69,7 @@ public class FileStateStoreTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_testDir, recursive: true); }
-        catch { /* Best effort */ }
+        if (Directory.Exists(_testDir))
+            Directory.Delete(_testDir, recursive: true);
     }
 }

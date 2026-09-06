@@ -15,7 +15,7 @@ public static class LoggingConfiguration
         var logDir = customLogDir ?? GetLogDirectory();
         Directory.CreateDirectory(logDir);
 
-        var process = Process.GetCurrentProcess();
+        using var process = Process.GetCurrentProcess();
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -24,7 +24,6 @@ public static class LoggingConfiguration
             .Enrich.FromLogContext()
             .Enrich.WithProperty("Application", "PrivLock")
             .Enrich.WithProperty("ProcessId", process.Id)
-            .Enrich.WithProperty("MachineName", Environment.MachineName)
             .WriteTo.File(
                 path: Path.Combine(logDir, "PrivLock-.log"),
                 rollingInterval: RollingInterval.Day,
@@ -36,7 +35,6 @@ public static class LoggingConfiguration
         Log.Information("=== PrivLock Logging Initialized ===");
         Log.Information("OS: {OS} ({Desc})", Environment.OSVersion, System.Runtime.InteropServices.RuntimeInformation.OSDescription);
         Log.Information("Arch: {Arch}", System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
-        Log.Information("User: {User}", Environment.UserName);
         Log.Information("Process ID: {PID}", process.Id);
         Log.Information(".NET Runtime: {Runtime}", Environment.Version);
         Log.Information("Log directory: {LogDir}", logDir);

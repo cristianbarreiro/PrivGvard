@@ -193,8 +193,16 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
         {
-            var devices = await _protectionService.GetDetectedDevicesAsync();
-            UpdateUi(state, devices);
+            try
+            {
+                var devices = await _protectionService.GetDetectedDevicesAsync();
+                UpdateUi(state, devices);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to refresh detected devices after a protection-state change");
+                ShowError($"Could not verify the current device state: {ex.Message}");
+            }
         });
     }
 
@@ -416,36 +424,20 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task ToggleCameraSecureAsync()
     {
         if (_isUpdating) return;
-        ClearError();
-
-        var state = await _protectionService.GetCurrentStateAsync();
-        var result = state.Camera.SecureState == SecureProtectionState.Active
-            ? await _protectionService.DisableSecureProtectionAsync(BlockTarget.Camera)
-            : await _protectionService.EnableSecureProtectionAsync(BlockTarget.Camera);
-
-        if (!result.Success)
-        {
-            ShowError(result.ErrorMessage ?? "Camera Secure Protection error");
-            await RefreshStateAsync();
-        }
+        await ToggleSecureAsync(
+            BlockTarget.Camera,
+            state => state.Camera.SecureState == SecureProtectionState.Active,
+            "Camera Secure Protection error");
     }
 
     [RelayCommand]
     private async Task ToggleMicSecureAsync()
     {
         if (_isUpdating) return;
-        ClearError();
-
-        var state = await _protectionService.GetCurrentStateAsync();
-        var result = state.Microphone.SecureState == SecureProtectionState.Active
-            ? await _protectionService.DisableSecureProtectionAsync(BlockTarget.Microphone)
-            : await _protectionService.EnableSecureProtectionAsync(BlockTarget.Microphone);
-
-        if (!result.Success)
-        {
-            ShowError(result.ErrorMessage ?? "Microphone Secure Protection error");
-            await RefreshStateAsync();
-        }
+        await ToggleSecureAsync(
+            BlockTarget.Microphone,
+            state => state.Microphone.SecureState == SecureProtectionState.Active,
+            "Microphone Secure Protection error");
     }
 
     // --- Unified (Both) Toggle ---
@@ -476,30 +468,46 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task ToggleBothSecureAsync()
     {
         if (_isUpdating) return;
+        await ToggleSecureAsync(
+            BlockTarget.Both,
+            state => state.Camera.SecureState == SecureProtectionState.Active &&
+                     state.Microphone.SecureState == SecureProtectionState.Active,
+            "Both Secure Protection error");
+    }
+
+    private async Task ToggleSecureAsync(
+        BlockTarget target,
+        Func<FullProtectionState, bool> isActive,
+        string fallbackError)
+    {
         ClearError();
-
-        var state = await _protectionService.GetCurrentStateAsync();
-        var bothSecureActive = state.Camera.SecureState == SecureProtectionState.Active &&
-                               state.Microphone.SecureState == SecureProtectionState.Active;
-
-        var result = bothSecureActive
-            ? await _protectionService.DisableSecureProtectionAsync(BlockTarget.Both)
-            : await _protectionService.EnableSecureProtectionAsync(BlockTarget.Both);
-
-        if (!result.Success)
+        try
         {
-            ShowError(result.ErrorMessage ?? "Both Secure Protection error");
-            await RefreshStateAsync();
+            var state = await _protectionService.GetCurrentStateAsync();
+            var result = isActive(state)
+                ? await _protectionService.DisableSecureProtectionAsync(target)
+                : await _protectionService.EnableSecureProtectionAsync(target);
+            if (!result.Success)
+                ShowError(result.ErrorMessage ?? fallbackError);
         }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Secure protection toggle failed before state could be verified");
+            ShowError($"{fallbackError}: {ex.Message}");
+        }
+
+        await RefreshStateAsync();
     }
 
     [RelayCommand]
     private void SelectLanguage(string lang)
     {
         if (_isUpdating) return;
-        _localizationService.SetLanguage(lang);
+        var result = _localizationService.SetLanguage(lang);
         IsSpanishSelected = lang == "es";
         IsEnglishSelected = lang == "en";
+        if (!result.Success)
+            ShowError(result.ErrorMessage ?? "Failed to save language preference");
     }
 
     [RelayCommand]
@@ -518,6 +526,11 @@ public sealed partial class MainViewModel : ObservableObject
     {
         ErrorMessage = msg;
         HasError = true;
+    }
+
+    public void ReportExternalError(string message)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => ShowError(message));
     }
 
     [RelayCommand]

@@ -6,6 +6,10 @@ namespace PrivLock.UI.Views;
 
 public partial class MainWindow : Window
 {
+    private bool _allowApplicationClose;
+
+    public event EventHandler? ApplicationExitRequested;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -26,14 +30,18 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object? sender, RoutedEventArgs e)
     {
-        Hide();
+        ApplicationExitRequested?.Invoke(this, EventArgs.Empty);
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
-        // Cancel close and hide to tray if available
-        e.Cancel = true;
-        Hide();
+        if (!_allowApplicationClose)
+        {
+            e.Cancel = true;
+            ApplicationExitRequested?.Invoke(this, EventArgs.Empty);
+        }
         base.OnClosing(e);
     }
+
+    public void AllowApplicationClose() => _allowApplicationClose = true;
 }

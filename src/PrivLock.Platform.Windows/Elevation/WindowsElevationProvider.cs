@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Principal;
 using PrivLock.Domain.Results;
 using PrivLock.Platform.Abstractions;
@@ -33,44 +32,8 @@ public sealed class WindowsElevationProvider : IElevationProvider
 
     public Task<ElevationResult> RequestElevationAsync(CancellationToken cancellationToken = default)
     {
-        if (IsElevated)
-        {
-            return Task.FromResult(ElevationResult.Success());
-        }
-
-        try
-        {
-            var exePath = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(exePath))
-            {
-                return Task.FromResult(ElevationResult.Fail("Cannot determine executable path."));
-            }
-
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = exePath,
-                Verb = "runas",
-                UseShellExecute = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process != null)
-            {
-                return Task.FromResult(ElevationResult.Success());
-            }
-
-            return Task.FromResult(ElevationResult.Fail("Failed to start elevated process."));
-        }
-        catch (global::System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
-        {
-            // ERROR_CANCELLED (1223) = User clicked "No" on UAC prompt
-            Log.Warning("User cancelled Windows UAC elevation prompt");
-            return Task.FromResult(ElevationResult.Cancelled());
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Exception while requesting Windows elevation");
-            return Task.FromResult(ElevationResult.Fail(ex.Message));
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(ElevationResult.Fail(
+            "Whole-application elevation is disabled. Privileged operations use an authenticated transient worker."));
     }
 }

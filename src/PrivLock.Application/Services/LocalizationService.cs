@@ -1,4 +1,5 @@
 using PrivLock.Infrastructure.Common.Localization;
+using PrivLock.Domain.Results;
 using PrivLock.Platform.Abstractions;
 using Serilog;
 
@@ -31,7 +32,7 @@ public sealed class LocalizationService
         SetLanguage(initialLang, saveState: false);
     }
 
-    public void SetLanguage(string langCode, bool saveState = true)
+    public OperationResult SetLanguage(string langCode, bool saveState = true)
     {
         langCode = langCode.ToLowerInvariant() switch
         {
@@ -44,12 +45,22 @@ public sealed class LocalizationService
 
         if (saveState)
         {
-            var state = _stateStore.Load();
-            state.Language = langCode;
-            _stateStore.Save(state);
+            try
+            {
+                var state = _stateStore.Load();
+                state.Language = langCode;
+                _stateStore.Save(state);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Language changed in memory but could not be persisted");
+                LanguageChanged?.Invoke(langCode);
+                return OperationResult.Fail($"Language preference could not be saved: {ex.Message}");
+            }
         }
 
         LanguageChanged?.Invoke(langCode);
+        return OperationResult.Ok();
     }
 
     public string GetString(string key, string fallback = "")

@@ -19,4 +19,8 @@
     <ProjectReference Include="..\PrivLock.Infrastructure.Common\PrivLock.Infrastructure.Common.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PrivLock.Platform.Windows.Tests" />
+  </ItemGroup>
+
 </Project>

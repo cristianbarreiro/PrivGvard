@@ -13,6 +13,7 @@ public static class CrashReporter
 {
     private static readonly ILogger Log = Serilog.Log.ForContext(typeof(CrashReporter));
     private static readonly object FileLock = new();
+    private static int _fileOutputSuppressed;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,8 +21,24 @@ public static class CrashReporter
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    /// <summary>
+    /// Prevents this process from writing crash artifacts. The transient elevated worker uses
+    /// this before parsing any input so it never follows user-controlled LocalAppData paths.
+    /// </summary>
+    public static void SuppressFileOutputForCurrentProcess() =>
+        Interlocked.Exchange(ref _fileOutputSuppressed, 1);
+
     public static string GenerateCrashReport(Exception exception, string sourceContext, object? appState = null, string? customCrashDir = null)
     {
+        if (Volatile.Read(ref _fileOutputSuppressed) != 0)
+        {
+            Trace.TraceError(
+                "PrivLock crash report suppressed in restricted process. Context={0}, Exception={1}",
+                sourceContext,
+                exception.GetType().FullName);
+            return string.Empty;
+        }
+
         lock (FileLock)
         {
             try
@@ -33,7 +50,7 @@ public static class CrashReporter
                 Directory.CreateDirectory(crashDir);
 
                 var reportPath = Path.Combine(crashDir, $"crash-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}.json");
-                var process = Process.GetCurrentProcess();
+                using var process = Process.GetCurrentProcess();
 
                 var report = new CrashReportModel
                 {
@@ -50,8 +67,6 @@ public static class CrashReporter
                     } : null,
                     EnvironmentInfo = new EnvironmentInfoModel
                     {
-                        MachineName = Environment.MachineName,
-                        UserName = Environment.UserName,
                         OsDescription = RuntimeInformation.OSDescription,
                         ProcessArchitecture = RuntimeInformation.ProcessArchitecture.ToString(),
                         RuntimeVersion = Environment.Version.ToString(),
@@ -100,8 +115,6 @@ public static class CrashReporter
 
     private sealed class EnvironmentInfoModel
     {
-        public required string MachineName { get; set; }
-        public required string UserName { get; set; }
         public required string OsDescription { get; set; }
         public required string ProcessArchitecture { get; set; }
         public required string RuntimeVersion { get; set; }

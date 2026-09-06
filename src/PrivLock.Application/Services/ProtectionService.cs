@@ -9,8 +9,8 @@ using Serilog.Context;
 namespace PrivLock.Application.Services;
 
 /// <summary>
-/// Core application service orchestrating two-tier protection workflows (Standard and Secure),
-/// enforcing strict business rules, measuring execution durations, and notifying subscribers.
+/// Single serialization point for block, unblock, recovery, and shutdown restoration.
+/// Every supported Windows mutation is prepared in a durable journal before platform dispatch.
 /// </summary>
 public sealed class ProtectionService
 {
@@ -20,259 +20,790 @@ public sealed class ProtectionService
     private readonly IDeviceDetector _deviceDetector;
     private readonly IPlatformCapabilityProvider _capabilityProvider;
     private readonly IStateStore _stateStore;
+    private readonly PrivacySessionService _privacySessions;
+    private readonly bool _allowUntrackedMutations;
+    private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private int _shutdownStarted;
+    private int _desiredStateCleanupPending;
 
     public event Action<FullProtectionState>? StateChanged;
 
     public PlatformCapabilities Capabilities => _capabilityProvider.Capabilities;
     public PlatformInfo PlatformInfo => _capabilityProvider.PlatformInfo;
+    public bool IsShutdownStarted => Volatile.Read(ref _shutdownStarted) != 0;
+    internal bool HasPendingDesiredStateCleanup => Volatile.Read(ref _desiredStateCleanupPending) != 0;
 
     public ProtectionService(
         IDeviceProtectionProvider protectionProvider,
         IDeviceDetector deviceDetector,
         IPlatformCapabilityProvider capabilityProvider,
-        IStateStore stateStore)
+        IStateStore stateStore,
+        PrivacySessionService privacySessions)
+        : this(
+            protectionProvider,
+            deviceDetector,
+            capabilityProvider,
+            stateStore,
+            privacySessions,
+            allowUntrackedMutations: false)
+    {
+    }
+
+    private ProtectionService(
+        IDeviceProtectionProvider protectionProvider,
+        IDeviceDetector deviceDetector,
+        IPlatformCapabilityProvider capabilityProvider,
+        IStateStore stateStore,
+        PrivacySessionService privacySessions,
+        bool allowUntrackedMutations)
     {
         _protectionProvider = protectionProvider;
         _deviceDetector = deviceDetector;
         _capabilityProvider = capabilityProvider;
         _stateStore = stateStore;
+        _privacySessions = privacySessions;
+        _allowUntrackedMutations = allowUntrackedMutations;
     }
 
     /// <summary>
-    /// Enables standard protection (without elevated permissions).
-    /// Transitions Secure Protection from Unavailable to Available.
+    /// Compatibility constructor for platform-agnostic callers/tests that do not opt into an exact
+    /// platform recovery adapter. Production DI uses the five-argument constructor.
     /// </summary>
-    public async Task<OperationResult> EnableStandardProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
+    public ProtectionService(
+        IDeviceProtectionProvider protectionProvider,
+        IDeviceDetector deviceDetector,
+        IPlatformCapabilityProvider capabilityProvider,
+        IStateStore stateStore)
+        : this(
+            protectionProvider,
+            deviceDetector,
+            capabilityProvider,
+            stateStore,
+            new PrivacySessionService(
+                new VolatilePrivacySessionStore(),
+                new UnsupportedPrivacySessionPlatformAdapter()),
+            allowUntrackedMutations: true)
     {
-        var opId = $"Op-StdEn-{Guid.NewGuid():N}"[..16];
-        using var _ = LogContext.PushProperty("OperationId", opId);
-        var sw = Stopwatch.StartNew();
+    }
 
-        Log.Information("Enabling standard protection for target: {Target}", target);
-
-        try
+    public async Task<OperationResult> EnableStandardProtectionAsync(
+        BlockTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        var operationId = CreateOperationId("StdEn");
+        using var context = LogContext.PushProperty("OperationId", operationId);
+        return await RunSerializedUserOperationAsync(async () =>
         {
-            var result = await _protectionProvider.EnableStandardProtectionAsync(target, cancellationToken);
+            PrivacyBlockPreparation? preparation = null;
+            var result = await PrepareApplyAndRecordAsync(
+                ProtectionLayer.Standard,
+                target,
+                operationId,
+                ct => _protectionProvider.EnableStandardProtectionAsync(target, ct),
+                prepared => preparation = prepared,
+                cancellationToken);
             if (!result.Success)
-            {
-                sw.Stop();
-                Log.Error("Failed to enable standard protection: {Error}", result.ErrorMessage);
                 return result;
-            }
 
-            // Update persisted desired state
-            var desired = _stateStore.Load();
-            if (target is BlockTarget.Camera or BlockTarget.Both)
+            try
             {
-                desired.CameraStandard = StandardProtectionState.Active;
-                if (desired.CameraSecure == SecureProtectionState.Unavailable)
-                    desired.CameraSecure = SecureProtectionState.Available;
+                var desired = _stateStore.Load();
+                if (target is BlockTarget.Camera or BlockTarget.Both)
+                {
+                    desired.CameraStandard = StandardProtectionState.Active;
+                    if (desired.CameraSecure == SecureProtectionState.Unavailable)
+                        desired.CameraSecure = SecureProtectionState.Available;
+                }
+                if (target is BlockTarget.Microphone or BlockTarget.Both)
+                {
+                    desired.MicrophoneStandard = StandardProtectionState.Active;
+                    if (desired.MicrophoneSecure == SecureProtectionState.Unavailable)
+                        desired.MicrophoneSecure = SecureProtectionState.Available;
+                }
+                _stateStore.Save(desired);
             }
-            if (target is BlockTarget.Microphone or BlockTarget.Both)
+            catch (Exception ex)
             {
-                desired.MicrophoneStandard = StandardProtectionState.Active;
-                if (desired.MicrophoneSecure == SecureProtectionState.Unavailable)
-                    desired.MicrophoneSecure = SecureProtectionState.Available;
+                Log.Error(ex, "Desired-state persistence failed after Standard protection; rolling back owned changes");
+                var rollback = await RestorePreparedDeltaOrScopeAsync(
+                    preparation,
+                    ProtectionLayer.Standard,
+                    target,
+                    "DesiredStateSaveFailure",
+                    CancellationToken.None);
+                return OperationResult.Fail(
+                    rollback.SafeToExit
+                        ? $"Protection was rolled back because application state could not be saved: {ex.Message}"
+                        : $"Application state could not be saved and rollback remains incomplete: {rollback.ErrorMessage}");
             }
-            _stateStore.Save(desired);
-
-            // Fetch and verify actual state
-            var newState = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
-            StateChanged?.Invoke(newState);
-
-            sw.Stop();
-            Log.Information("Standard protection enabled successfully in {DurationMs}ms", sw.ElapsedMilliseconds);
-            return OperationResult.Ok();
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-            Log.Error(ex, "Unexpected error enabling standard protection");
-            return OperationResult.Fail(ex.Message);
-        }
+            await PublishVerifiedStateAsync(cancellationToken);
+            return OperationResult.Ok(result.Details);
+        }, operationId, cancellationToken);
     }
 
-    /// <summary>
-    /// Disables standard protection.
-    /// Transitions Secure Protection back to Unavailable.
-    /// </summary>
-    public async Task<OperationResult> DisableStandardProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
+    public async Task<OperationResult> DisableStandardProtectionAsync(
+        BlockTarget target,
+        CancellationToken cancellationToken = default)
     {
-        var opId = $"Op-StdDis-{Guid.NewGuid():N}"[..16];
-        using var _ = LogContext.PushProperty("OperationId", opId);
-        var sw = Stopwatch.StartNew();
+        var operationId = CreateOperationId("StdDis");
+        using var context = LogContext.PushProperty("OperationId", operationId);
+        return await RunSerializedUserOperationAsync(async () =>
+        {
+            // Standard teardown also owns Secure changes. Legacy/unsupported providers are only
+            // called when verified state says Secure is active, preserving prior API behavior.
+            var secureResult = PrivacyRecoveryResult.NothingToRestore();
+            if (_privacySessions.SupportsPersistentRecovery ||
+                await IsSecureActiveAsync(target, cancellationToken))
+            {
+                secureResult = await RestoreScopeAsync(
+                    ProtectionLayer.Secure,
+                    target,
+                    "UserDisableStandard-SecureFirst",
+                    cancellationToken);
+            }
+            var standardResult = await RestoreScopeAsync(
+                ProtectionLayer.Standard,
+                target,
+                "UserDisableStandard",
+                cancellationToken);
 
-        Log.Information("Disabling standard protection for target: {Target}", target);
+            var combined = CombineRecoveryResults(secureResult, standardResult);
+            if (combined.SafeToExit &&
+                (combined.HadRecoveryWork || combined.ConflictCount == 0) &&
+                (combined.TrackingSupported || _allowUntrackedMutations))
+            {
+                UpdateDesiredAfterStandardDisable(target);
+                await PublishVerifiedStateAsync(cancellationToken);
+            }
 
-        try
+            return ToOperationResult(combined);
+        }, operationId, cancellationToken);
+    }
+
+    public async Task<OperationResult> EnableSecureProtectionAsync(
+        BlockTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        var operationId = CreateOperationId("SecEn");
+        using var context = LogContext.PushProperty("OperationId", operationId);
+        return await RunSerializedUserOperationAsync(async () =>
         {
             var current = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
-
-            // If secure protection was active, disable it first to ensure clean state
-            if (target is BlockTarget.Camera or BlockTarget.Both && current.Camera.SecureState == SecureProtectionState.Active)
+            if (target is BlockTarget.Camera or BlockTarget.Both &&
+                current.Camera.StandardState != StandardProtectionState.Active)
             {
-                Log.Information("Disabling active camera secure protection as part of standard teardown");
-                await _protectionProvider.DisableSecureProtectionAsync(BlockTarget.Camera, cancellationToken);
+                return OperationResult.Fail(
+                    "You must enable Standard Protection before enabling Secure Protection for Camera.");
             }
-            if (target is BlockTarget.Microphone or BlockTarget.Both && current.Microphone.SecureState == SecureProtectionState.Active)
+            if (target is BlockTarget.Microphone or BlockTarget.Both &&
+                current.Microphone.StandardState != StandardProtectionState.Active)
             {
-                Log.Information("Disabling active microphone secure protection as part of standard teardown");
-                await _protectionProvider.DisableSecureProtectionAsync(BlockTarget.Microphone, cancellationToken);
+                return OperationResult.Fail(
+                    "You must enable Standard Protection before enabling Secure Protection for Microphone.");
             }
 
-            var result = await _protectionProvider.DisableStandardProtectionAsync(target, cancellationToken);
+            PrivacyBlockPreparation? preparation = null;
+            var result = await PrepareApplyAndRecordAsync(
+                ProtectionLayer.Secure,
+                target,
+                operationId,
+                ct => _protectionProvider.EnableSecureProtectionAsync(target, ct),
+                prepared => preparation = prepared,
+                cancellationToken);
             if (!result.Success)
-            {
-                sw.Stop();
-                Log.Error("Failed to disable standard protection: {Error}", result.ErrorMessage);
                 return result;
-            }
 
-            // Update persisted desired state
-            var desired = _stateStore.Load();
-            if (target is BlockTarget.Camera or BlockTarget.Both)
+            try
             {
-                desired.CameraStandard = StandardProtectionState.Inactive;
-                desired.CameraSecure = SecureProtectionState.Unavailable;
+                var desired = _stateStore.Load();
+                if (target is BlockTarget.Camera or BlockTarget.Both)
+                    desired.CameraSecure = SecureProtectionState.Active;
+                if (target is BlockTarget.Microphone or BlockTarget.Both)
+                    desired.MicrophoneSecure = SecureProtectionState.Active;
+                _stateStore.Save(desired);
             }
-            if (target is BlockTarget.Microphone or BlockTarget.Both)
+            catch (Exception ex)
             {
-                desired.MicrophoneStandard = StandardProtectionState.Inactive;
-                desired.MicrophoneSecure = SecureProtectionState.Unavailable;
+                Log.Error(ex, "Desired-state persistence failed after Secure protection; rolling back owned changes");
+                var rollback = await RestorePreparedDeltaOrScopeAsync(
+                    preparation,
+                    ProtectionLayer.Secure,
+                    target,
+                    "DesiredStateSaveFailure",
+                    CancellationToken.None);
+                return OperationResult.Fail(
+                    rollback.SafeToExit
+                        ? $"Secure protection was rolled back because application state could not be saved: {ex.Message}"
+                        : $"Application state could not be saved and rollback remains incomplete: {rollback.ErrorMessage}");
             }
-            _stateStore.Save(desired);
+            await PublishVerifiedStateAsync(cancellationToken);
+            return OperationResult.Ok(result.Details);
+        }, operationId, cancellationToken);
+    }
 
-            var newState = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
-            StateChanged?.Invoke(newState);
-
-            sw.Stop();
-            Log.Information("Standard protection disabled successfully in {DurationMs}ms", sw.ElapsedMilliseconds);
-            return OperationResult.Ok();
-        }
-        catch (Exception ex)
+    public async Task<OperationResult> DisableSecureProtectionAsync(
+        BlockTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        var operationId = CreateOperationId("SecDis");
+        using var context = LogContext.PushProperty("OperationId", operationId);
+        return await RunSerializedUserOperationAsync(async () =>
         {
-            sw.Stop();
-            Log.Error(ex, "Unexpected error disabling standard protection");
-            return OperationResult.Fail(ex.Message);
+            var recovery = await RestoreScopeAsync(
+                ProtectionLayer.Secure,
+                target,
+                "UserDisableSecure",
+                cancellationToken);
+            if (recovery.SafeToExit &&
+                (recovery.HadRecoveryWork || recovery.ConflictCount == 0) &&
+                (recovery.TrackingSupported || _allowUntrackedMutations))
+            {
+                var desired = _stateStore.Load();
+                if (target is BlockTarget.Camera or BlockTarget.Both)
+                    desired.CameraSecure = desired.CameraStandard == StandardProtectionState.Active
+                        ? SecureProtectionState.Available
+                        : SecureProtectionState.Unavailable;
+                if (target is BlockTarget.Microphone or BlockTarget.Both)
+                    desired.MicrophoneSecure = desired.MicrophoneStandard == StandardProtectionState.Active
+                        ? SecureProtectionState.Available
+                        : SecureProtectionState.Unavailable;
+                _stateStore.Save(desired);
+                await PublishVerifiedStateAsync(cancellationToken);
+            }
+            return ToOperationResult(recovery);
+        }, operationId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Startup recovery runs before the ViewModel/UI exists and before any new mutation is allowed.
+    /// </summary>
+    public async Task<PrivacyRecoveryResult> RecoverPreviousSessionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _operationGate.WaitAsync(cancellationToken);
+        try
+        {
+            var desiredBeforeRecovery = _stateStore.Load();
+            var result = await _privacySessions.RecoverUnfinishedSessionAsync(cancellationToken);
+            if (!_allowUntrackedMutations &&
+                result.SafeToExit &&
+                !result.HadPersistedSession &&
+                HasAnyDesiredProtection(desiredBeforeRecovery))
+            {
+                return LegacyUntrackedRecoveryResult();
+            }
+            if (result.TrackingSupported &&
+                result.SafeToExit &&
+                result.HadPersistedSession &&
+                HasAnyDesiredProtection(desiredBeforeRecovery))
+                ResetDesiredProtectionStateBestEffort("startup recovery");
+            return result;
+        }
+        finally
+        {
+            _operationGate.Release();
         }
     }
 
     /// <summary>
-    /// Enables secure / administrator protection (requests on-demand elevation).
-    /// Enforces precondition: Standard Protection MUST be active first.
+    /// Marks the service as stopping before waiting on the operation gate. This ordering ensures a
+    /// queued toggle cannot run after shutdown restoration has completed.
     /// </summary>
-    public async Task<OperationResult> EnableSecureProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
+    public async Task<PrivacyRecoveryResult> BeginShutdownAndRestoreAsync(
+        string reason,
+        CancellationToken cancellationToken = default)
     {
-        var opId = $"Op-SecEn-{Guid.NewGuid():N}"[..16];
-        using var _ = LogContext.PushProperty("OperationId", opId);
-        var sw = Stopwatch.StartNew();
-
-        Log.Information("Requesting secure protection for target: {Target}", target);
-
+        SignalShutdown();
+        await _operationGate.WaitAsync(cancellationToken);
         try
         {
-            var current = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
-
-            // Precondition validation: Standard protection must be Active
-            if (target is BlockTarget.Camera or BlockTarget.Both && current.Camera.StandardState != StandardProtectionState.Active)
+            PrivacyRecoveryResult result;
+            if (_privacySessions.SupportsPersistentRecovery)
             {
-                sw.Stop();
-                var msg = "You must enable Standard Protection before enabling Secure Protection for Camera.";
-                Log.Warning(msg);
-                return OperationResult.Fail(msg);
+                result = await _privacySessions.RestoreAsync(null, null, reason, cancellationToken);
+            }
+            else
+            {
+                if (!_allowUntrackedMutations)
+                {
+                    // Production must never perform a broad "allow/unmute" without an exact
+                    // snapshot proving ownership. Unsupported platforms reject mutation earlier.
+                    result = PrivacyRecoveryResult.Unsupported();
+                }
+                else
+                {
+                    var secure = await _protectionProvider.DisableSecureProtectionAsync(BlockTarget.Both, cancellationToken);
+                    var standard = await _protectionProvider.DisableStandardProtectionAsync(BlockTarget.Both, cancellationToken);
+                    result = new PrivacyRecoveryResult
+                    {
+                        TrackingSupported = false,
+                        IsComplete = secure.Success && standard.Success,
+                        FailedCount = (secure.Success ? 0 : 1) + (standard.Success ? 0 : 1),
+                        ErrorMessage = secure.ErrorMessage ?? standard.ErrorMessage
+                    };
+                }
             }
 
-            if (target is BlockTarget.Microphone or BlockTarget.Both && current.Microphone.StandardState != StandardProtectionState.Active)
-            {
-                sw.Stop();
-                var msg = "You must enable Standard Protection before enabling Secure Protection for Microphone.";
-                Log.Warning(msg);
-                return OperationResult.Fail(msg);
-            }
+            var desiredAfterRecovery = _stateStore.Load();
+            if (!_allowUntrackedMutations &&
+                result.SafeToExit &&
+                !result.HadPersistedSession &&
+                HasAnyDesiredProtection(desiredAfterRecovery))
+                result = LegacyUntrackedRecoveryResult();
 
-            // Perform privileged secure protection (on-demand elevation)
-            var result = await _protectionProvider.EnableSecureProtectionAsync(target, cancellationToken);
-            if (!result.Success)
-            {
-                sw.Stop();
-                Log.Error("Failed to enable secure protection: {Error}", result.ErrorMessage);
-                return result;
-            }
+            if (result.SafeToExit &&
+                result.HadPersistedSession &&
+                HasAnyDesiredProtection(desiredAfterRecovery) &&
+                (result.TrackingSupported || _allowUntrackedMutations))
+                ResetDesiredProtectionStateBestEffort("shutdown recovery");
+            return result;
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
 
-            // Update persisted desired state
-            var desired = _stateStore.Load();
-            if (target is BlockTarget.Camera or BlockTarget.Both)
-                desired.CameraSecure = SecureProtectionState.Active;
-            if (target is BlockTarget.Microphone or BlockTarget.Both)
-                desired.MicrophoneSecure = SecureProtectionState.Active;
-            _stateStore.Save(desired);
+    internal void SignalShutdown() => Interlocked.Exchange(ref _shutdownStarted, 1);
 
-            var newState = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
-            StateChanged?.Invoke(newState);
+    public void AbortShutdown() => Interlocked.Exchange(ref _shutdownStarted, 0);
 
-            sw.Stop();
-            Log.Information("Secure protection enabled and verified in {DurationMs}ms", sw.ElapsedMilliseconds);
-            return OperationResult.Ok();
+    public Task<FullProtectionState> GetCurrentStateAsync(CancellationToken cancellationToken = default) =>
+        _protectionProvider.GetProtectionStateAsync(cancellationToken);
+
+    public Task<IReadOnlyList<DeviceInfo>> GetDetectedDevicesAsync(CancellationToken cancellationToken = default) =>
+        _deviceDetector.DetectAllAsync(cancellationToken);
+
+    public object GetRecoveryDiagnosticSummary() => _privacySessions.GetDiagnosticSummary();
+
+    private async Task<OperationResult> PrepareApplyAndRecordAsync(
+        ProtectionLayer layer,
+        BlockTarget target,
+        string operationId,
+        Func<CancellationToken, Task<OperationResult>> apply,
+        Action<PrivacyBlockPreparation> capturePreparation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await PrepareApplyAndRecordCoreAsync(
+                layer,
+                target,
+                operationId,
+                apply,
+                capturePreparation,
+                cancellationToken);
+        }
+        finally
+        {
+            _privacySessions.CompletePlatformPass();
+        }
+    }
+
+    private async Task<OperationResult> PrepareApplyAndRecordCoreAsync(
+        ProtectionLayer layer,
+        BlockTarget target,
+        string operationId,
+        Func<CancellationToken, Task<OperationResult>> apply,
+        Action<PrivacyBlockPreparation> capturePreparation,
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        PrivacyBlockPreparation preparation;
+        try
+        {
+            preparation = await _privacySessions.PrepareBlockAsync(layer, target, operationId, cancellationToken);
+            capturePreparation(preparation);
         }
         catch (Exception ex)
         {
-            sw.Stop();
-            Log.Error(ex, "Unexpected error enabling secure protection");
-            return OperationResult.Fail(ex.Message);
+            Log.Error(ex, "Snapshot persistence failed; platform mutation was not dispatched");
+            return OperationResult.Fail($"Could not persist a recovery snapshot: {ex.Message}");
         }
-    }
 
-    /// <summary>
-    /// Disables secure / administrator protection.
-    /// Standard protection remains active.
-    /// </summary>
-    public async Task<OperationResult> DisableSecureProtectionAsync(BlockTarget target, CancellationToken cancellationToken = default)
-    {
-        var opId = $"Op-SecDis-{Guid.NewGuid():N}"[..16];
-        using var _ = LogContext.PushProperty("OperationId", opId);
-        var sw = Stopwatch.StartNew();
+        if (!preparation.TrackingEnabled && !_allowUntrackedMutations)
+        {
+            return OperationResult.Fail(
+                "This platform cannot yet capture and restore exact per-resource privacy state; the protection change was not applied.");
+        }
 
-        Log.Information("Disabling secure protection for target: {Target}", target);
+        var validation = await _privacySessions.ValidatePreparedResourcesAsync(preparation, cancellationToken);
+        if (!validation.Success)
+        {
+            return validation;
+        }
 
+        OperationResult platformResult;
         try
         {
-            var result = await _protectionProvider.DisableSecureProtectionAsync(target, cancellationToken);
-            if (!result.Success)
-            {
-                sw.Stop();
-                Log.Error("Failed to disable secure protection: {Error}", result.ErrorMessage);
-                return result;
-            }
-
-            var desired = _stateStore.Load();
-            if (target is BlockTarget.Camera or BlockTarget.Both)
-                desired.CameraSecure = SecureProtectionState.Available;
-            if (target is BlockTarget.Microphone or BlockTarget.Both)
-                desired.MicrophoneSecure = SecureProtectionState.Available;
-            _stateStore.Save(desired);
-
-            var newState = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
-            StateChanged?.Invoke(newState);
-
-            sw.Stop();
-            Log.Information("Secure protection disabled successfully in {DurationMs}ms", sw.ElapsedMilliseconds);
-            return OperationResult.Ok();
+            platformResult = await apply(cancellationToken);
         }
         catch (Exception ex)
         {
-            sw.Stop();
-            Log.Error(ex, "Unexpected error disabling secure protection");
+            Log.Error(ex, "Platform block operation threw after snapshot commit");
+            platformResult = OperationResult.Fail(ex.Message, outcomeUncertain: true);
+        }
+
+        OperationResult journalResult;
+        try
+        {
+            // Reconciliation and rollback must survive caller cancellation once native dispatch began.
+            journalResult = await _privacySessions.RecordBlockOutcomeAsync(
+                preparation,
+                platformResult,
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to record platform outcome; durable ApplyPending entries remain for startup recovery");
+            var executionStillInFlight = platformResult.ExecutionStillInFlight;
+            if (executionStillInFlight)
+            {
+                _privacySessions.RequireMutationQuiescence();
+                var quiescence = await _privacySessions.EnsureMutationQuiescenceAsync(CancellationToken.None);
+                executionStillInFlight = !quiescence.Success;
+            }
+
+            if (executionStillInFlight)
+            {
+                return OperationResult.Fail(
+                    $"The platform outcome checkpoint failed and its native actor is not quiescent: {ex.Message}",
+                    platformResult.Details,
+                    outcomeUncertain: true,
+                    executionStillInFlight: true);
+            }
+
+            var compensation = await _privacySessions.RollbackConfirmedApplyAfterCheckpointFailureAsync(
+                preparation,
+                platformResult,
+                CancellationToken.None);
+            var compensationMessage = compensation.SafeToExit
+                ? " Confirmed changes were immediately restored."
+                : $" Immediate restoration remains incomplete: {compensation.ErrorMessage}";
+            return OperationResult.Fail(
+                $"The platform outcome checkpoint failed: {ex.Message}.{compensationMessage}",
+                platformResult.Details,
+                outcomeUncertain: platformResult.OutcomeUncertain,
+                executionStillInFlight: false);
+        }
+
+        var result = platformResult.Success ? journalResult : platformResult;
+        if (!result.Success)
+        {
+            if (result.ExecutionStillInFlight)
+            {
+                return OperationResult.Fail(
+                    (result.ErrorMessage ?? "Protection outcome is unknown.") +
+                    " Recovery remains deferred until the privileged actor is proven stopped.",
+                    result.Details,
+                    outcomeUncertain: true,
+                    executionStillInFlight: true);
+            }
+
+            var rollback = await RestorePreparedDeltaOrScopeAsync(
+                preparation,
+                layer,
+                target,
+                "BlockFailureRollback",
+                CancellationToken.None);
+            var rollbackSuffix = !rollback.SafeToExit
+                ? $" Rollback remains incomplete: {rollback.ErrorMessage}"
+                : rollback.ConflictCount > 0
+                    ? $" External conflicts were preserved: {rollback.ErrorMessage}"
+                    : " Partial changes were rolled back.";
+            return OperationResult.Fail((result.ErrorMessage ?? "Protection operation failed.") + rollbackSuffix, result.Details);
+        }
+
+        stopwatch.Stop();
+        Log.Information(
+            "Protection applied and journaled: Layer={Layer}, Target={Target}, DurationMs={DurationMs}",
+            layer,
+            target,
+            stopwatch.ElapsedMilliseconds);
+        return result;
+    }
+
+    private Task<PrivacyRecoveryResult> RestorePreparedDeltaOrScopeAsync(
+        PrivacyBlockPreparation? preparation,
+        ProtectionLayer layer,
+        BlockTarget target,
+        string reason,
+        CancellationToken cancellationToken) =>
+        preparation is { TrackingEnabled: true }
+            ? _privacySessions.RestorePreparedDeltaAsync(
+                preparation,
+                layer,
+                target,
+                reason,
+                cancellationToken)
+            : _privacySessions.RestoreAsync(layer, target, reason, cancellationToken);
+
+    private async Task<PrivacyRecoveryResult> RestoreScopeAsync(
+        ProtectionLayer layer,
+        BlockTarget target,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (_privacySessions.SupportsPersistentRecovery)
+        {
+            var recovery = await _privacySessions.RestoreAsync(layer, target, reason, cancellationToken);
+            if (!recovery.SafeToExit)
+                return recovery;
+            if (!recovery.HadRecoveryWork &&
+                !recovery.HadPersistedSession &&
+                IsDesiredScopeActive(_stateStore.Load(), layer, target))
+                return LegacyUntrackedRecoveryResult();
+            if (!recovery.HadRecoveryWork)
+            {
+                var actual = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+                var active = IsActualScopeActive(actual, layer, target);
+                if (active == true)
+                {
+                    return new PrivacyRecoveryResult
+                    {
+                        IsComplete = true,
+                        ConflictCount = 1,
+                        ErrorMessage =
+                            "The requested privacy scope is protected, but no PrivLock ownership snapshot exists. " +
+                            "The external or legacy state was preserved."
+                    };
+                }
+                if (active == null)
+                {
+                    return new PrivacyRecoveryResult
+                    {
+                        IsComplete = false,
+                        FailedCount = 1,
+                        ErrorMessage =
+                            "The requested privacy scope has no ownership snapshot and its current state could not be verified."
+                    };
+                }
+            }
+            return recovery;
+        }
+
+        if (!_allowUntrackedMutations)
+        {
+            return IsDesiredScopeActive(_stateStore.Load(), layer, target)
+                ? LegacyUntrackedRecoveryResult()
+                : PrivacyRecoveryResult.Unsupported();
+        }
+
+        var result = layer == ProtectionLayer.Standard
+            ? await _protectionProvider.DisableStandardProtectionAsync(target, cancellationToken)
+            : await _protectionProvider.DisableSecureProtectionAsync(target, cancellationToken);
+        return new PrivacyRecoveryResult
+        {
+            TrackingSupported = false,
+            IsComplete = result.Success,
+            FailedCount = result.Success ? 0 : 1,
+            ErrorMessage = result.ErrorMessage
+        };
+    }
+
+    private async Task<OperationResult> RunSerializedUserOperationAsync(
+        Func<Task<OperationResult>> operation,
+        string operationId,
+        CancellationToken cancellationToken)
+    {
+        if (IsShutdownStarted)
+            return OperationResult.Fail("PrivLock is shutting down; new protection changes are not accepted.");
+
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (IsShutdownStarted)
+                return OperationResult.Fail("PrivLock is shutting down; new protection changes are not accepted.");
+            // The whole serialized operation must be independent of a UI synchronization context.
+            // Shutdown/logout is then free to return control to the dispatcher while this operation
+            // reaches its durable checkpoint and releases the gate.
+            return await Task.Run(operation, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Log.Warning("Protection operation {OperationId} was cancelled", operationId);
+            return OperationResult.Fail("The operation was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected protection operation failure");
             return OperationResult.Fail(ex.Message);
+        }
+        finally
+        {
+            _operationGate.Release();
         }
     }
 
-    public Task<FullProtectionState> GetCurrentStateAsync(CancellationToken cancellationToken = default)
+    private async Task PublishVerifiedStateAsync(CancellationToken cancellationToken)
     {
-        return _protectionProvider.GetProtectionStateAsync(cancellationToken);
+        var state = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+        StateChanged?.Invoke(state);
     }
 
-    public Task<IReadOnlyList<DeviceInfo>> GetDetectedDevicesAsync(CancellationToken cancellationToken = default)
+    private async Task<bool> IsSecureActiveAsync(BlockTarget target, CancellationToken cancellationToken)
     {
-        return _deviceDetector.DetectAllAsync(cancellationToken);
+        var state = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+        return target switch
+        {
+            BlockTarget.Camera => state.Camera.SecureState == SecureProtectionState.Active,
+            BlockTarget.Microphone => state.Microphone.SecureState == SecureProtectionState.Active,
+            BlockTarget.Both =>
+                state.Camera.SecureState == SecureProtectionState.Active ||
+                state.Microphone.SecureState == SecureProtectionState.Active,
+            _ => false
+        };
+    }
+
+    private void UpdateDesiredAfterStandardDisable(BlockTarget target)
+    {
+        var desired = _stateStore.Load();
+        if (target is BlockTarget.Camera or BlockTarget.Both)
+        {
+            desired.CameraStandard = StandardProtectionState.Inactive;
+            desired.CameraSecure = SecureProtectionState.Unavailable;
+        }
+        if (target is BlockTarget.Microphone or BlockTarget.Both)
+        {
+            desired.MicrophoneStandard = StandardProtectionState.Inactive;
+            desired.MicrophoneSecure = SecureProtectionState.Unavailable;
+        }
+        _stateStore.Save(desired);
+    }
+
+    private void ResetDesiredProtectionState()
+    {
+        var desired = _stateStore.Load();
+        desired.CameraStandard = StandardProtectionState.Inactive;
+        desired.CameraSecure = SecureProtectionState.Unavailable;
+        desired.MicrophoneStandard = StandardProtectionState.Inactive;
+        desired.MicrophoneSecure = SecureProtectionState.Unavailable;
+        _stateStore.Save(desired);
+    }
+
+    private void ResetDesiredProtectionStateBestEffort(string context)
+    {
+        try
+        {
+            ResetDesiredProtectionState();
+            Interlocked.Exchange(ref _desiredStateCleanupPending, 0);
+        }
+        catch (Exception ex)
+        {
+            // The recovery journal and verified native state remain authoritative. A preferences
+            // file failure must not turn a completed hardware restore into an unsafe shutdown.
+            Interlocked.Exchange(ref _desiredStateCleanupPending, 1);
+            Log.Error(ex, "Failed to reset desired protection state after {Context}", context);
+        }
+    }
+
+    private OperationResult ToOperationResult(PrivacyRecoveryResult result)
+    {
+        if (!result.TrackingSupported && !_allowUntrackedMutations)
+        {
+            return OperationResult.Fail(
+                "Exact reversible privacy-state tracking is not supported on this platform; no broad unblock was attempted.");
+        }
+        if (!result.SafeToExit)
+            return OperationResult.Fail(result.ErrorMessage ?? "Restoration remains incomplete.");
+        if (result.ConflictCount > 0)
+            return OperationResult.Fail(result.ErrorMessage ?? "External state conflicts were preserved.");
+        return OperationResult.Ok();
+    }
+
+    private static PrivacyRecoveryResult CombineRecoveryResults(params PrivacyRecoveryResult[] results) => new()
+    {
+        TrackingSupported = results.All(result => result.TrackingSupported),
+        HadPersistedSession = results.Any(result => result.HadPersistedSession),
+        HadRecoveryWork = results.Any(result => result.HadRecoveryWork),
+        IsComplete = results.All(result => result.IsComplete),
+        RestoredCount = results.Sum(result => result.RestoredCount),
+        AlreadyRestoredCount = results.Sum(result => result.AlreadyRestoredCount),
+        ConflictCount = results.Sum(result => result.ConflictCount),
+        IrreducibleAmbiguityCount = results.Sum(result => result.IrreducibleAmbiguityCount),
+        MissingCount = results.Sum(result => result.MissingCount),
+        FailedCount = results.Sum(result => result.FailedCount),
+        ErrorMessage = string.Join(" ", results.Select(result => result.ErrorMessage).Where(message => !string.IsNullOrWhiteSpace(message)))
+    };
+
+    private static PrivacyRecoveryResult LegacyUntrackedRecoveryResult() => new()
+    {
+        IsComplete = false,
+        FailedCount = 1,
+        ErrorMessage =
+            "A protection state from an older PrivLock version was detected without an exact recovery snapshot. " +
+            "It was preserved; automatic broad unblocking is unsafe. Review the affected operating-system privacy settings manually."
+    };
+
+    private static bool HasAnyDesiredProtection(DesiredState desired) =>
+        desired.CameraStandard == StandardProtectionState.Active ||
+        desired.MicrophoneStandard == StandardProtectionState.Active ||
+        desired.CameraSecure == SecureProtectionState.Active ||
+        desired.MicrophoneSecure == SecureProtectionState.Active;
+
+    private static bool IsDesiredScopeActive(
+        DesiredState desired,
+        ProtectionLayer layer,
+        BlockTarget target)
+    {
+        var camera = layer == ProtectionLayer.Standard
+            ? desired.CameraStandard == StandardProtectionState.Active
+            : desired.CameraSecure == SecureProtectionState.Active;
+        var microphone = layer == ProtectionLayer.Standard
+            ? desired.MicrophoneStandard == StandardProtectionState.Active
+            : desired.MicrophoneSecure == SecureProtectionState.Active;
+        return target switch
+        {
+            BlockTarget.Camera => camera,
+            BlockTarget.Microphone => microphone,
+            BlockTarget.Both => camera || microphone,
+            _ => false
+        };
+    }
+
+    private static bool? IsActualScopeActive(
+        FullProtectionState state,
+        ProtectionLayer layer,
+        BlockTarget target)
+    {
+        static bool? ForTarget(TargetProtectionStatus status, ProtectionLayer requestedLayer) =>
+            requestedLayer == ProtectionLayer.Standard
+                ? status.StandardState switch
+                {
+                    StandardProtectionState.Active => true,
+                    StandardProtectionState.Inactive => false,
+                    _ => null
+                }
+                : status.SecureState switch
+                {
+                    SecureProtectionState.Active => true,
+                    SecureProtectionState.Unknown => null,
+                    _ => false
+                };
+
+        var camera = ForTarget(state.Camera, layer);
+        var microphone = ForTarget(state.Microphone, layer);
+        return target switch
+        {
+            BlockTarget.Camera => camera,
+            BlockTarget.Microphone => microphone,
+            BlockTarget.Both when camera == true || microphone == true => true,
+            BlockTarget.Both when camera == null || microphone == null => null,
+            BlockTarget.Both => false,
+            _ => null
+        };
+    }
+
+    private static string CreateOperationId(string prefix)
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..12];
+        return $"Op-{prefix}-{suffix}";
+    }
+
+    private sealed class VolatilePrivacySessionStore : IPrivacySessionStore
+    {
+        private PrivacySession? _session;
+        public PrivacySession? Load() => _session;
+        public void Save(PrivacySession session) => _session = session;
     }
 }

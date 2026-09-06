@@ -49,6 +49,18 @@ public sealed class DeviceInfo
     /// </summary>
     public bool IsEnabled { get; init; }
 
+    /// <summary>
+    /// Native Configuration Manager problem code when the platform exposes one.
+    /// Windows uses 0 for no problem and 22 (CM_PROB_DISABLED) for an administratively disabled node.
+    /// Other non-zero values must not be treated as safely restorable by simply enabling the node.
+    /// </summary>
+    public uint? ConfigurationProblemCode { get; init; }
+
+    /// <summary>
+    /// True only when the provider could authoritatively read the device's native state.
+    /// </summary>
+    public bool IsStateKnown { get; init; } = true;
+
     public override string ToString() =>
         $"[{DeviceType}] {FriendlyName} ({Id}) - {(IsEnabled ? "Enabled" : "Disabled")}";
 

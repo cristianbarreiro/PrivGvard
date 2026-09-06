@@ -8,6 +8,7 @@
 [Ll]ogs/
 publish/
 publish_out/
+installer_out/
 publish_dist/
 
 # User-specific files
