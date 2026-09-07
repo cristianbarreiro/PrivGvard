@@ -4,9 +4,10 @@
         x:Class="PrivLock.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="PrivLock"
-        Width="460" Height="550"
-        MinWidth="460" MinHeight="550"
-        MaxWidth="460" MaxHeight="550"
+        Width="460"
+        MinWidth="460"
+        MaxWidth="460"
+        SizeToContent="Height"
         CanResize="False"
         WindowStartupLocation="CenterScreen"
         Background="#181818"
@@ -139,7 +140,7 @@
         </Border>
 
         <!-- 5. Detected Hardware Devices Section -->
-        <StackPanel Grid.Row="4" Margin="16,8,16,8" Spacing="4">
+        <StackPanel Grid.Row="4" Margin="16,8,16,4" Spacing="4">
             <TextBlock Text="{Binding DetectedDevicesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="#888888" Margin="4,0,0,0" />
             <Border Background="#1C1C1E" CornerRadius="8" Padding="6" BorderThickness="1" BorderBrush="#2A2A2E">
                 <ScrollViewer MaxHeight="86" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -165,7 +166,7 @@
         </StackPanel>
 
         <!-- 6. Footer: Settings & Language Selector -->
-        <Border Grid.Row="5" Background="#141416" Padding="16,10" BorderThickness="0,1,0,0" BorderBrush="#252528">
+        <Border Grid.Row="5" Background="#141416" Padding="16,6,16,10" BorderThickness="0,1,0,0" BorderBrush="#252528">
             <Grid ColumnDefinitions="*,Auto">
                 <!-- Autostart Checkbox -->
                 <CheckBox Grid.Column="0" IsChecked="{Binding IsAutostartEnabled}"
