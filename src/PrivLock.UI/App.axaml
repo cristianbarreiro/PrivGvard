@@ -9,8 +9,8 @@
         <Style Selector="Border.card">
             <Setter Property="Background" Value="#252528" />
             <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="16" />
-            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="Margin" Value="0" />
         </Style>
 
         <!-- Accent ToggleSwitch Styling -->

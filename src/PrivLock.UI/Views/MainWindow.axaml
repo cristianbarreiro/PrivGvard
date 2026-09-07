@@ -51,10 +51,10 @@
         </Border>
 
         <!-- 2. Main Scrollable Content (Hidden Scrollbars) -->
-        <ScrollViewer Grid.Row="1" Margin="16,12,16,12"
+        <ScrollViewer Grid.Row="1" Margin="16,10,16,10"
                       VerticalScrollBarVisibility="Hidden"
                       HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Spacing="12">
+            <StackPanel Spacing="10">
 
                 <!-- Error Toast Banner -->
                 <Border Background="#C62828" CornerRadius="8" Padding="12,8"
@@ -80,104 +80,61 @@
                     </Grid>
                 </Border>
 
-                <!-- ================= ADVANCED PROTECTION (GLOBAL EXTENSION) CARD ================= -->
+                <!-- ================= ADVANCED PROTECTION (INDEPENDENT EXTENSION) CARD ================= -->
                 <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
-                    <StackPanel Spacing="10">
-                        <!-- Advanced Protection Header -->
-                        <Grid ColumnDefinitions="Auto,*">
-                            <TextBlock Grid.Column="0" Text="🛡️" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding AdvancedProtectionTitle}" FontSize="15" FontWeight="Bold" Foreground="White" />
-                                <TextBlock Text="{Binding AdvancedProtectionSubtitle}" FontSize="11" Foreground="#888888" />
-                            </StackPanel>
-                        </Grid>
-
-                        <Border Height="1" Background="#333338" Margin="0,2" />
-
-                        <!-- Advanced Protection Toggle -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding AdvancedProtectionDesc}" FontSize="11" Foreground="#777777" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding AdvancedProtectionStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding AdvancedProtectionStatusColor}" Margin="0,2,0,0" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsAdvancedProtectionEnabled}"
-                                          VerticalAlignment="Center" />
-                        </Grid>
-                    </StackPanel>
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock Grid.Column="0" Text="🛡️" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                            <TextBlock Text="{Binding AdvancedProtectionTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                            <TextBlock Text="{Binding AdvancedProtectionSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding AdvancedProtectionStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding AdvancedProtectionStatusColor}" Margin="0,1,0,0" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsAdvancedProtectionEnabled}"
+                                      VerticalAlignment="Center" Margin="10,0,0,0" />
+                    </Grid>
                 </Border>
 
-                <!-- ================= UNIFIED CONTROL CARD ================= -->
+                <!-- ================= PRIVACY CONTROLS (UNIFIED, CAMERA, MICROPHONE) GROUP CARD ================= -->
                 <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
-                    <StackPanel Spacing="10">
-                        <!-- Unified Header -->
-                        <Grid ColumnDefinitions="Auto,*">
-                            <TextBlock Grid.Column="0" Text="🔗" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding UnifiedTitle}" FontSize="15" FontWeight="Bold" Foreground="White" />
-                                <TextBlock Text="{Binding UnifiedSubtitle}" FontSize="11" Foreground="#888888" />
+                    <StackPanel>
+                        <!-- Row 1: Unified Control -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="🔗" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="{Binding UnifiedTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                                <TextBlock Text="{Binding UnifiedSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding BothStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding BothStatusColor}" Margin="0,1,0,0" />
                             </StackPanel>
+                            <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsBothBlocked}"
+                                          VerticalAlignment="Center" Margin="10,0,0,0" />
                         </Grid>
 
-                        <Border Height="1" Background="#333338" Margin="0,2" />
+                        <Border Height="1" Background="#333338" Margin="0,8" />
 
-                        <!-- Unified Block Control -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding UnifiedStandardDesc}" FontSize="11" Foreground="#777777" />
-                                <TextBlock Text="{Binding BothStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding BothStatusColor}" Margin="0,2,0,0" />
+                        <!-- Row 2: Camera -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="📷" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="{Binding CameraTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                                <TextBlock Text="{Binding CameraSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding CameraStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding CameraStatusColor}" Margin="0,1,0,0" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsBothBlocked}"
-                                          VerticalAlignment="Center" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- ================= CAMERA CARD ================= -->
-                <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
-                    <StackPanel Spacing="10">
-                        <!-- Camera Header -->
-                        <Grid ColumnDefinitions="Auto,*">
-                            <TextBlock Grid.Column="0" Text="📷" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding CameraTitle}" FontSize="15" FontWeight="Bold" Foreground="White" />
-                                <TextBlock Text="{Binding CameraSubtitle}" FontSize="11" Foreground="#888888" />
-                            </StackPanel>
+                            <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsCameraBlocked}"
+                                          VerticalAlignment="Center" Margin="10,0,0,0" />
                         </Grid>
 
-                        <Border Height="1" Background="#333338" Margin="0,2" />
+                        <Border Height="1" Background="#333338" Margin="0,8" />
 
-                        <!-- Camera Block Control -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding CameraStatusText}" FontSize="12" FontWeight="SemiBold" Foreground="{Binding CameraStatusColor}" />
+                        <!-- Row 3: Microphone -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="🎙️" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="{Binding MicrophoneTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                                <TextBlock Text="{Binding MicrophoneSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding MicStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding MicStatusColor}" Margin="0,1,0,0" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsCameraBlocked}"
-                                          VerticalAlignment="Center" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- ================= MICROPHONE CARD ================= -->
-                <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
-                    <StackPanel Spacing="10">
-                        <!-- Microphone Header -->
-                        <Grid ColumnDefinitions="Auto,*">
-                            <TextBlock Grid.Column="0" Text="🎙️" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding MicrophoneTitle}" FontSize="15" FontWeight="Bold" Foreground="White" />
-                                <TextBlock Text="{Binding MicrophoneSubtitle}" FontSize="11" Foreground="#888888" />
-                            </StackPanel>
-                        </Grid>
-
-                        <Border Height="1" Background="#333338" Margin="0,2" />
-
-                        <!-- Microphone Block Control -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding MicStatusText}" FontSize="12" FontWeight="SemiBold" Foreground="{Binding MicStatusColor}" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsMicBlocked}"
-                                          VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsMicBlocked}"
+                                          VerticalAlignment="Center" Margin="10,0,0,0" />
                         </Grid>
                     </StackPanel>
                 </Border>
