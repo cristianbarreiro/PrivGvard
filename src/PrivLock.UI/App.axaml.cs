@@ -20,6 +20,7 @@ public partial class App : Avalonia.Application
 
     private readonly MainViewModel? _mainViewModel;
     private readonly ShutdownCoordinator? _shutdownCoordinator;
+    private readonly SettingsViewModel? _settingsViewModel;
     private TrayIcon? _trayIcon;
     private Window? _mainWindow;
     private bool _shutdownCommitted;
@@ -30,10 +31,11 @@ public partial class App : Avalonia.Application
     {
     }
 
-    public App(MainViewModel mainViewModel, ShutdownCoordinator shutdownCoordinator)
+    public App(MainViewModel mainViewModel, ShutdownCoordinator shutdownCoordinator, SettingsViewModel? settingsViewModel = null)
     {
         _mainViewModel = mainViewModel;
         _shutdownCoordinator = shutdownCoordinator;
+        _settingsViewModel = settingsViewModel;
     }
 
     public override void Initialize()
@@ -59,7 +61,7 @@ public partial class App : Avalonia.Application
 
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-            var mainWindow = new MainWindow
+            var mainWindow = new MainWindow(_settingsViewModel)
             {
                 DataContext = _mainViewModel
             };

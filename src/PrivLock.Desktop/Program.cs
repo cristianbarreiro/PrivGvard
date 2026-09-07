@@ -209,13 +209,14 @@ public static class Program
 
             // 9. Start Avalonia Application
             var mainViewModel = serviceProvider.GetRequiredService<MainViewModel>();
+            var settingsViewModel = serviceProvider.GetRequiredService<SettingsViewModel>();
             if (!startupRecovery.SafeToExit || startupRecovery.ConflictCount > 0)
             {
                 mainViewModel.ReportExternalError(
                     startupRecovery.ErrorMessage ?? "A previous privacy session could not be fully restored.");
             }
 
-            var exitCode = BuildAvaloniaApp(mainViewModel, _shutdownCoordinator)
+            var exitCode = BuildAvaloniaApp(mainViewModel, _shutdownCoordinator, settingsViewModel)
                 .StartWithClassicDesktopLifetime(args);
 
             var finalRestoreFinished = _shutdownCoordinator.TryRestoreWithin(
@@ -298,8 +299,11 @@ public static class Program
         return 1;
     }
 
-    public static AppBuilder BuildAvaloniaApp(MainViewModel viewModel, ShutdownCoordinator shutdownCoordinator) =>
-        AppBuilder.Configure<App>(() => new App(viewModel, shutdownCoordinator))
+    public static AppBuilder BuildAvaloniaApp(
+        MainViewModel viewModel,
+        ShutdownCoordinator shutdownCoordinator,
+        SettingsViewModel? settingsViewModel = null) =>
+        AppBuilder.Configure<App>(() => new App(viewModel, shutdownCoordinator, settingsViewModel))
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace();
@@ -344,6 +348,7 @@ public static class Program
 
         // 4. UI ViewModels
         services.AddSingleton<MainViewModel>();
+        services.AddSingleton<SettingsViewModel>();
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

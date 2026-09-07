@@ -677,6 +677,21 @@ public sealed partial class MainViewModel : ObservableObject
         Avalonia.Threading.Dispatcher.UIThread.Post(() => ShowError(message));
     }
 
+    public event Action<SettingsSection>? OpenSettingsRequested;
+
+    [RelayCommand]
+    public void OpenSettings(string? sectionName)
+    {
+        var section = SettingsSection.General;
+        if (!string.IsNullOrWhiteSpace(sectionName) &&
+            Enum.TryParse<SettingsSection>(sectionName, true, out var parsed))
+        {
+            section = parsed;
+        }
+
+        OpenSettingsRequested?.Invoke(section);
+    }
+
     [RelayCommand]
     private void ClearError()
     {

@@ -1,0 +1,328 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PrivLock.UI.ViewModels"
+        x:Class="PrivLock.UI.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="{Binding WindowTitle}"
+        Width="720" Height="500"
+        MinWidth="660" MinHeight="440"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="#181818"
+        Foreground="#EDEDED"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="38">
+
+    <Window.Styles>
+        <!-- Navigation Item Styles -->
+        <Style Selector="Button.navItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#AAAAAA" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.navItem:pointerover">
+            <Setter Property="Background" Value="#252528" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.navItem.active">
+            <Setter Property="Background" Value="#007ACC" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!-- Setting Card Style -->
+        <Style Selector="Border.settingCard">
+            <Setter Property="Background" Value="#202024" />
+            <Setter Property="BorderBrush" Value="#2E2E34" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="38,*">
+        <!-- 1. Custom TitleBar -->
+        <Border Grid.Row="0" Background="#1A1A1D" IsHitTestVisible="True" PointerPressed="OnTitleBarPointerPressed">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0" Spacing="8">
+                    <TextBlock Text="⚙️" FontSize="13" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding WindowTitle}" FontWeight="Bold" FontSize="13" Foreground="White" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- Window Controls -->
+                <Button Grid.Column="2" Width="44" Height="38" Background="Transparent" BorderThickness="0"
+                        Click="OnMinimizeClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                    <TextBlock Text="—" FontSize="11" Foreground="#AAAAAA" />
+                </Button>
+                <Button Grid.Column="3" Width="44" Height="38" Background="Transparent" BorderThickness="0"
+                        Click="OnCloseClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                    <TextBlock Text="✕" FontSize="12" Foreground="#AAAAAA" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- 2. Main Content: Sidebar + Right View -->
+        <Grid Grid.Row="1" ColumnDefinitions="210,*">
+            <!-- Sidebar Navigation -->
+            <Border Grid.Column="0" Background="#161618" BorderBrush="#252528" BorderThickness="0,0,1,0" Padding="10,14">
+                <StackPanel Spacing="4">
+                    <!-- General -->
+                    <Button Classes="navItem" Classes.active="{Binding IsGeneralSelected}"
+                            Command="{Binding SelectSectionCommand}" CommandParameter="General">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="⚙️" FontSize="14" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding NavGeneral}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Help -->
+                    <Button Classes="navItem" Classes.active="{Binding IsHelpSelected}"
+                            Command="{Binding SelectSectionCommand}" CommandParameter="Help">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="📖" FontSize="14" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding NavHelp}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Diagnostics -->
+                    <Button Classes="navItem" Classes.active="{Binding IsDiagnosticsSelected}"
+                            Command="{Binding SelectSectionCommand}" CommandParameter="Diagnostics">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="🛡️" FontSize="14" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding NavDiagnostics}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- About -->
+                    <Button Classes="navItem" Classes.active="{Binding IsAboutSelected}"
+                            Command="{Binding SelectSectionCommand}" CommandParameter="About">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="ℹ️" FontSize="14" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding NavAbout}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Right Panel: Section Content -->
+            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <Panel Margin="20,16,20,16">
+
+                    <!-- SECTION 1: GENERAL SETTINGS -->
+                    <StackPanel Spacing="8" IsVisible="{Binding IsGeneralSelected}">
+                        <TextBlock Text="{Binding NavGeneral}" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,8" />
+
+                        <!-- Appearance Card -->
+                        <Border Classes="settingCard">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="{Binding AppearanceTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                                    <TextBlock Text="{Binding ThemeDescription}" FontSize="11" Foreground="#888888" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="#2C2C30" CornerRadius="6" Padding="10,4" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ThemeDark}" FontSize="11" FontWeight="SemiBold" Foreground="#007ACC" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- System Startup Card -->
+                        <Border Classes="settingCard">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding StartupTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                                    <TextBlock Text="{Binding StartupDescription}" FontSize="11" Foreground="#888888" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" IsChecked="{Binding IsAutostartEnabled}"
+                                          Content="{Binding StartWithSystemLabel}" FontSize="12" Foreground="#CCCCCC"
+                                          Command="{Binding ToggleAutostartCommand}" CommandParameter="{Binding $self.IsChecked}"
+                                          VerticalAlignment="Center" Margin="10,0,0,0" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Interface Language Card -->
+                        <Border Classes="settingCard">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding LanguageTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                                    <TextBlock Text="{Binding LanguageDescription}" FontSize="11" Foreground="#888888" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="10,0,0,0">
+                                    <Button Classes="pill" Classes.active="{Binding IsSpanishSelected}"
+                                            Command="{Binding SelectLanguageCommand}" CommandParameter="es" Content="ES" />
+                                    <Button Classes="pill" Classes.active="{Binding IsEnglishSelected}"
+                                            Command="{Binding SelectLanguageCommand}" CommandParameter="en" Content="EN" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- SECTION 2: HELP & DOCUMENTATION -->
+                    <StackPanel Spacing="8" IsVisible="{Binding IsHelpSelected}">
+                        <TextBlock Text="{Binding HelpTitle}" FontSize="18" FontWeight="Bold" Foreground="White" />
+                        <TextBlock Text="{Binding HelpSubtitle}" FontSize="11" Foreground="#888888" Margin="0,0,0,8" />
+
+                        <!-- How It Works -->
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding HelpHowItWorksTitle}" FontSize="12" FontWeight="Bold" Foreground="#007ACC" />
+                                <TextBlock Text="{Binding HelpHowItWorksDesc}" FontSize="11" Foreground="#CCCCCC" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Camera Protection -->
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding HelpCameraTitle}" FontSize="12" FontWeight="Bold" Foreground="#007ACC" />
+                                <TextBlock Text="{Binding HelpCameraDesc}" FontSize="11" Foreground="#CCCCCC" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Microphone Protection -->
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding HelpMicTitle}" FontSize="12" FontWeight="Bold" Foreground="#007ACC" />
+                                <TextBlock Text="{Binding HelpMicDesc}" FontSize="11" Foreground="#CCCCCC" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Advanced Protection -->
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding HelpAdvancedTitle}" FontSize="12" FontWeight="Bold" Foreground="#007ACC" />
+                                <TextBlock Text="{Binding HelpAdvancedDesc}" FontSize="11" Foreground="#CCCCCC" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Unified Control -->
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding HelpUnifiedTitle}" FontSize="12" FontWeight="Bold" Foreground="#007ACC" />
+                                <TextBlock Text="{Binding HelpUnifiedDesc}" FontSize="11" Foreground="#CCCCCC" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- FAQ -->
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{Binding HelpFaqTitle}" FontSize="12" FontWeight="Bold" Foreground="White" />
+                                <TextBlock Text="{Binding HelpFaq1Q}" FontSize="11" FontWeight="SemiBold" Foreground="#007ACC" Margin="0,2,0,0" />
+                                <TextBlock Text="{Binding HelpFaq1A}" FontSize="11" Foreground="#CCCCCC" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- SECTION 3: SYSTEM DIAGNOSTICS -->
+                    <StackPanel Spacing="8" IsVisible="{Binding IsDiagnosticsSelected}">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding DiagTitle}" FontSize="18" FontWeight="Bold" Foreground="White" />
+                                <TextBlock Text="{Binding DiagSubtitle}" FontSize="11" Foreground="#888888" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Command="{Binding RefreshDiagnosticsCommand}" Classes="pill" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="🔄" FontSize="11" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding DiagRefreshButton}" FontSize="11" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!-- Diagnostic Data Grid -->
+                        <Border Classes="settingCard">
+                            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="2">
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding DiagOsLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding OsName}" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding DiagArchLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Architecture}" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding DiagPrivilegesLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding PrivilegeLevel}" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding DiagAdvancedLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding AdvancedStatus}" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding DiagCamStatusLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding CameraStatus}" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                                </StackPanel>
+                                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding DiagMicStatusLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding MicrophoneStatus}" FontSize="12" Foreground="White" FontWeight="SemiBold" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                    <TextBlock Text="{Binding DiagCapabilitiesLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding CapabilitiesSummary}" FontSize="11" Foreground="#007ACC" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Row="4" Grid.ColumnSpan="2">
+                                    <TextBlock Text="{Binding DiagDevicesCountLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding DevicesCount, StringFormat='{}{0} dispositivos detectados en total'}" FontSize="11" Foreground="White" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Detected Hardware List -->
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Dispositivos Detectados" FontSize="11" FontWeight="Bold" Foreground="White" />
+                                <ItemsControl ItemsSource="{Binding DetectedDevicesList}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#18181A" CornerRadius="4" Padding="8,4" Margin="0,1">
+                                                <TextBlock Text="{Binding}" FontSize="11" Foreground="#CCCCCC" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- SECTION 4: ABOUT -->
+                    <StackPanel Spacing="8" IsVisible="{Binding IsAboutSelected}">
+                        <TextBlock Text="{Binding AboutTitle}" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,8" />
+
+                        <Border Classes="settingCard">
+                            <StackPanel Spacing="8" HorizontalAlignment="Center" Margin="0,8">
+                                <TextBlock Text="🛡️" FontSize="36" HorizontalAlignment="Center" />
+                                <TextBlock Text="{Binding AppName}" FontSize="18" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" />
+                                <Border Background="#007ACC" CornerRadius="10" Padding="8,3" HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding AppVersion, StringFormat='v{0}'}" FontSize="11" FontWeight="Bold" Foreground="White" />
+                                </Border>
+                                <TextBlock Text="{Binding AboutDescription}" FontSize="11" Foreground="#888888" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Classes="settingCard">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="2">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding AboutDeveloperLabel}" FontSize="11" Foreground="#888888" Margin="0,4" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding AboutDeveloperValue}" FontSize="11" FontWeight="SemiBold" Foreground="White" Margin="0,4" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding AboutLicenseLabel}" FontSize="11" Foreground="#888888" Margin="0,4" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AboutLicenseValue}" FontSize="11" FontWeight="SemiBold" Foreground="White" Margin="0,4" />
+
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding AboutCopyright}" FontSize="10" Foreground="#666666" Margin="0,8,0,0" HorizontalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                </Panel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Window>

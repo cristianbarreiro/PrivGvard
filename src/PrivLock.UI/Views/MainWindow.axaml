@@ -16,7 +16,7 @@
         ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="38">
 
-    <Grid RowDefinitions="38,Auto,Auto,Auto,Auto,Auto">
+    <Grid RowDefinitions="38,Auto,Auto,Auto,Auto">
         <!-- 1. Custom Integrated TitleBar -->
         <Border Grid.Row="0" Background="#1A1A1D" IsHitTestVisible="True" PointerPressed="OnTitleBarPointerPressed">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
@@ -28,11 +28,11 @@
                         <TextBlock Text="⚙️" FontSize="13" Foreground="#AAAAAA" />
                         <Button.Flyout>
                             <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                                <MenuItem Header="⚙️  Ajustes" />
-                                <MenuItem Header="📖  Ayuda y Documentación" />
-                                <MenuItem Header="🛡️  Diagnóstico del Sistema" />
+                                <MenuItem Header="⚙️  Ajustes" Command="{Binding OpenSettingsCommand}" CommandParameter="General" />
+                                <MenuItem Header="📖  Ayuda y Documentación" Command="{Binding OpenSettingsCommand}" CommandParameter="Help" />
+                                <MenuItem Header="🛡️  Diagnóstico del Sistema" Command="{Binding OpenSettingsCommand}" CommandParameter="Diagnostics" />
                                 <Separator />
-                                <MenuItem Header="ℹ️  Acerca de PrivLock" />
+                                <MenuItem Header="ℹ️  Acerca de PrivGvard" Command="{Binding OpenSettingsCommand}" CommandParameter="About" />
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
@@ -140,7 +140,7 @@
         </Border>
 
         <!-- 5. Detected Hardware Devices Section -->
-        <StackPanel Grid.Row="4" Margin="16,8,16,4" Spacing="4">
+        <StackPanel Grid.Row="4" Margin="16,8,16,12" Spacing="4">
             <TextBlock Text="{Binding DetectedDevicesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="#888888" Margin="4,0,0,0" />
             <Border Background="#1C1C1E" CornerRadius="8" Padding="6" BorderThickness="1" BorderBrush="#2A2A2E">
                 <ScrollViewer MaxHeight="86" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -164,23 +164,5 @@
                 </ScrollViewer>
             </Border>
         </StackPanel>
-
-        <!-- 6. Footer: Settings & Language Selector -->
-        <Border Grid.Row="5" Background="#141416" Padding="16,6,16,10" BorderThickness="0,1,0,0" BorderBrush="#252528">
-            <Grid ColumnDefinitions="*,Auto">
-                <!-- Autostart Checkbox -->
-                <CheckBox Grid.Column="0" IsChecked="{Binding IsAutostartEnabled}"
-                          Content="{Binding StartWithSystemLabel}" FontSize="12" Foreground="#CCCCCC"
-                          Command="{Binding ToggleAutostartCommand}" CommandParameter="{Binding $self.IsChecked}" />
-
-                <!-- Language Selector (ES / EN) -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <Button Classes="pill" Classes.active="{Binding IsSpanishSelected}"
-                            Command="{Binding SelectLanguageCommand}" CommandParameter="es" Content="ES" />
-                    <Button Classes="pill" Classes.active="{Binding IsEnglishSelected}"
-                            Command="{Binding SelectLanguageCommand}" CommandParameter="en" Content="EN" />
-                </StackPanel>
-            </Grid>
-        </Border>
     </Grid>
 </Window>

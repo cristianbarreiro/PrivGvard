@@ -1,18 +1,74 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using PrivLock.UI.ViewModels;
 
 namespace PrivLock.UI.Views;
 
 public partial class MainWindow : Window
 {
     private bool _allowApplicationClose;
+    private readonly SettingsViewModel? _settingsViewModel;
+    private SettingsWindow? _settingsWindow;
 
     public event EventHandler? ApplicationExitRequested;
 
-    public MainWindow()
+    public MainWindow() : this(null)
     {
+    }
+
+    public MainWindow(SettingsViewModel? settingsViewModel)
+    {
+        _settingsViewModel = settingsViewModel;
         InitializeComponent();
+
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            vm.OpenSettingsRequested -= OnOpenSettingsRequested;
+            vm.OpenSettingsRequested += OnOpenSettingsRequested;
+        }
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        if (DataContext is MainViewModel vm)
+        {
+            vm.OpenSettingsRequested -= OnOpenSettingsRequested;
+            vm.OpenSettingsRequested += OnOpenSettingsRequested;
+        }
+    }
+
+    private void OnOpenSettingsRequested(SettingsSection section)
+    {
+        if (_settingsViewModel == null) return;
+
+        if (_settingsWindow == null)
+        {
+            _settingsWindow = new SettingsWindow(_settingsViewModel);
+            _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        }
+
+        _settingsViewModel.SelectedSection = section;
+
+        if (!_settingsWindow.IsVisible)
+        {
+            _settingsWindow.Show();
+        }
+        else
+        {
+            if (_settingsWindow.WindowState == WindowState.Minimized)
+            {
+                _settingsWindow.WindowState = WindowState.Normal;
+            }
+            _settingsWindow.Activate();
+            _settingsWindow.BringIntoView();
+        }
     }
 
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -40,8 +96,19 @@ public partial class MainWindow : Window
             e.Cancel = true;
             ApplicationExitRequested?.Invoke(this, EventArgs.Empty);
         }
+        else
+        {
+            _settingsWindow?.Close();
+            _settingsWindow = null;
+        }
         base.OnClosing(e);
     }
 
-    public void AllowApplicationClose() => _allowApplicationClose = true;
+    public void AllowApplicationClose()
+    {
+        _allowApplicationClose = true;
+        _settingsWindow?.Close();
+        _settingsWindow = null;
+    }
 }
+
