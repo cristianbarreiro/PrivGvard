@@ -55,6 +55,16 @@ public static class LocalizationCatalog
         ["UnifiedStandardDesc"] = "Proteger ambos dispositivos a la vez",
         ["UnifiedSecureDesc"] = "Reforzar protección en ambos dispositivos",
 
+        // Advanced Protection (Global Extension)
+        ["AdvancedProtectionTitle"] = "Protección Avanzada",
+        ["AdvancedProtectionSubtitle"] = "Refuerzo físico y directivas para dispositivos bloqueados",
+        ["AdvancedProtectionDesc"] = "Aplica aislamiento de hardware automáticamente a los dispositivos bloqueados",
+        ["StatusAdvancedActive"] = "🛡️ Reforzada (Avanzada)",
+        ["StatusAdvancedInactive"] = "○ Inactiva",
+        ["StatusBlockedAdvanced"] = "🛡️ Bloqueado (Avanzado)",
+        ["StatusBlockedStandard"] = "🔒 Bloqueado (Estándar)",
+        ["StatusUnblocked"] = "✅ Permitido",
+
         // Notifications & Errors
         ["ElevationCancelled"] = "Operación cancelada: Se denegaron los permisos de administrador.",
         ["StandardRequiredFirst"] = "Debes activar la Protección Estándar antes de activar la Protección Segura."
@@ -108,6 +118,16 @@ public static class LocalizationCatalog
         ["UnifiedSubtitle"] = "Control camera and microphone simultaneously",
         ["UnifiedStandardDesc"] = "Protect both devices at once",
         ["UnifiedSecureDesc"] = "Harden protection on both devices",
+
+        // Advanced Protection (Global Extension)
+        ["AdvancedProtectionTitle"] = "Advanced Protection",
+        ["AdvancedProtectionSubtitle"] = "Hardware isolation and system policies for blocked devices",
+        ["AdvancedProtectionDesc"] = "Automatically applies hardware-level isolation to blocked devices",
+        ["StatusAdvancedActive"] = "🛡️ Hardened (Advanced)",
+        ["StatusAdvancedInactive"] = "○ Inactive",
+        ["StatusBlockedAdvanced"] = "🛡️ Blocked (Advanced)",
+        ["StatusBlockedStandard"] = "🔒 Blocked (Standard)",
+        ["StatusUnblocked"] = "✅ Allowed",
 
         // Notifications & Errors
         ["ElevationCancelled"] = "Operation cancelled: Administrator permissions were denied.",

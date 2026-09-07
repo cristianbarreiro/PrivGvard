@@ -12,4 +12,7 @@ public sealed record FullProtectionState
     public bool BothProtected => Camera.IsProtected && Microphone.IsProtected;
     public bool BothSecure => Camera.SecureState == SecureProtectionState.Active &&
                               Microphone.SecureState == SecureProtectionState.Active;
+    public bool AdvancedProtectionEnabled { get; init; }
+    public bool CameraAdvancedProtected => Camera.IsProtected && AdvancedProtectionEnabled;
+    public bool MicrophoneAdvancedProtected => Microphone.IsProtected && AdvancedProtectionEnabled;
 }

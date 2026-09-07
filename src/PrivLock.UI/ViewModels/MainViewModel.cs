@@ -23,7 +23,26 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _appSubtitle = "Camera & Microphone Blocker";
 
+    // --- Advanced Protection (Global Extension) ---
+    [ObservableProperty]
+    private bool _isAdvancedProtectionEnabled;
+
+    [ObservableProperty]
+    private string _advancedProtectionStatusText = "";
+
+    [ObservableProperty]
+    private string _advancedProtectionStatusColor = "#888888";
+
     // --- Camera States ---
+    [ObservableProperty]
+    private bool _isCameraBlocked;
+
+    [ObservableProperty]
+    private string _cameraStatusText = "";
+
+    [ObservableProperty]
+    private string _cameraStatusColor = "#81C784";
+
     [ObservableProperty]
     private bool _isCameraStandardActive;
 
@@ -53,6 +72,15 @@ public sealed partial class MainViewModel : ObservableObject
 
     // --- Microphone States ---
     [ObservableProperty]
+    private bool _isMicBlocked;
+
+    [ObservableProperty]
+    private string _micStatusText = "";
+
+    [ObservableProperty]
+    private string _micStatusColor = "#81C784";
+
+    [ObservableProperty]
     private bool _isMicStandardActive;
 
     [ObservableProperty]
@@ -80,6 +108,15 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isMicSecureHintVisible;
 
     // --- Unified (Both) States ---
+    [ObservableProperty]
+    private bool _isBothBlocked;
+
+    [ObservableProperty]
+    private string _bothStatusText = "";
+
+    [ObservableProperty]
+    private string _bothStatusColor = "#81C784";
+
     [ObservableProperty]
     private bool _isBothStandardActive;
 
@@ -143,6 +180,9 @@ public sealed partial class MainViewModel : ObservableObject
     public string StandardProtectionDesc => _localizationService.GetString("StandardProtectionDesc");
     public string SecureProtectionTitle => _localizationService.GetString("SecureProtectionTitle");
     public string SecureProtectionDesc => _localizationService.GetString("SecureProtectionDesc");
+    public string AdvancedProtectionTitle => _localizationService.GetString("AdvancedProtectionTitle");
+    public string AdvancedProtectionSubtitle => _localizationService.GetString("AdvancedProtectionSubtitle");
+    public string AdvancedProtectionDesc => _localizationService.GetString("AdvancedProtectionDesc");
     public string DetectedDevicesLabel => _localizationService.GetString("DetectedDevices");
     public string StartWithSystemLabel => _localizationService.GetString("StartWithSystem");
     public string LanguageLabel => _localizationService.GetString("Language");
@@ -218,6 +258,9 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(StandardProtectionDesc));
             OnPropertyChanged(nameof(SecureProtectionTitle));
             OnPropertyChanged(nameof(SecureProtectionDesc));
+            OnPropertyChanged(nameof(AdvancedProtectionTitle));
+            OnPropertyChanged(nameof(AdvancedProtectionSubtitle));
+            OnPropertyChanged(nameof(AdvancedProtectionDesc));
             OnPropertyChanged(nameof(DetectedDevicesLabel));
             OnPropertyChanged(nameof(StartWithSystemLabel));
             OnPropertyChanged(nameof(LanguageLabel));
@@ -235,50 +278,95 @@ public sealed partial class MainViewModel : ObservableObject
         _isUpdating = true;
         try
         {
-            // === 1. Camera UI ===
-            var camStdActive = state.Camera.StandardState == StandardProtectionState.Active;
-            IsCameraStandardActive = camStdActive;
-            CameraStandardText = camStdActive
-                ? _localizationService.GetString("StatusStandardActive", "● Standard Active")
-                : _localizationService.GetString("StatusStandardInactive", "○ Standard Inactive");
-            CameraStandardColor = camStdActive ? "#E57373" : "#81C784"; // Red when blocked/protected, green when open
+            // === 1. Advanced Protection (Global Extension) ===
+            IsAdvancedProtectionEnabled = state.AdvancedProtectionEnabled;
+            AdvancedProtectionStatusText = state.AdvancedProtectionEnabled
+                ? _localizationService.GetString("StatusAdvancedActive", "🛡️ Hardened (Advanced)")
+                : _localizationService.GetString("StatusAdvancedInactive", "○ Inactive");
+            AdvancedProtectionStatusColor = state.AdvancedProtectionEnabled ? "#007ACC" : "#888888";
 
+            // === 2. Camera UI ===
+            var camBlocked = state.Camera.IsProtected;
+            IsCameraBlocked = camBlocked;
+            IsCameraStandardActive = camBlocked;
+
+            if (!camBlocked)
+            {
+                CameraStatusText = _localizationService.GetString("StatusUnblocked", "✅ Allowed");
+                CameraStatusColor = "#81C784";
+                CameraStandardText = _localizationService.GetString("StatusStandardInactive", "○ Standard Inactive");
+                CameraStandardColor = "#81C784";
+            }
+            else if (state.Camera.SecureState == SecureProtectionState.Active)
+            {
+                CameraStatusText = _localizationService.GetString("StatusBlockedAdvanced", "🛡️ Blocked (Advanced)");
+                CameraStatusColor = "#D32F2F";
+                CameraStandardText = _localizationService.GetString("StatusStandardActive", "● Standard Active");
+                CameraStandardColor = "#E57373";
+            }
+            else
+            {
+                CameraStatusText = _localizationService.GetString("StatusBlockedStandard", "🔒 Blocked (Standard)");
+                CameraStatusColor = "#E57373";
+                CameraStandardText = _localizationService.GetString("StatusStandardActive", "● Standard Active");
+                CameraStandardColor = "#E57373";
+            }
+
+            // Camera Secure Compatibility fields
             switch (state.Camera.SecureState)
             {
                 case SecureProtectionState.Active:
                     CameraSecureText = _localizationService.GetString("StatusSecureActive", "🛡️ Secure Active (Hardened)");
-                    CameraSecureBadgeColor = "#D32F2F"; // Strong red
+                    CameraSecureBadgeColor = "#D32F2F";
                     CameraSecureButtonText = _localizationService.GetString("DisableSecure", "Disable Secure");
                     IsCameraSecureButtonEnabled = true;
                     IsCameraSecureHintVisible = false;
                     break;
-
                 case SecureProtectionState.Available:
                     CameraSecureText = _localizationService.GetString("StatusSecureAvailable", "○ Available to enable");
-                    CameraSecureBadgeColor = "#F57C00"; // Orange
+                    CameraSecureBadgeColor = "#F57C00";
                     CameraSecureButtonText = _localizationService.GetString("EnableSecure", "🔒 Enable Secure Protection");
                     IsCameraSecureButtonEnabled = true;
                     IsCameraSecureHintVisible = false;
                     break;
-
-                default: // Unavailable or Failed
+                default:
                     CameraSecureText = _localizationService.GetString("StatusSecureUnavailable", "🔒 Unavailable");
                     CameraSecureBadgeColor = "#555555";
                     CameraSecureButtonText = _localizationService.GetString("EnableSecure", "🔒 Enable Secure Protection");
                     IsCameraSecureButtonEnabled = false;
                     CameraSecureHint = _localizationService.GetString("SecureRequirementHint", "Enable Standard Protection first");
-                    IsCameraSecureHintVisible = !camStdActive;
+                    IsCameraSecureHintVisible = !camBlocked;
                     break;
             }
 
-            // === 2. Microphone UI ===
-            var micStdActive = state.Microphone.StandardState == StandardProtectionState.Active;
-            IsMicStandardActive = micStdActive;
-            MicStandardText = micStdActive
-                ? _localizationService.GetString("StatusStandardActive", "● Standard Active")
-                : _localizationService.GetString("StatusStandardInactive", "○ Standard Inactive");
-            MicStandardColor = micStdActive ? "#E57373" : "#81C784";
+            // === 3. Microphone UI ===
+            var micBlocked = state.Microphone.IsProtected;
+            IsMicBlocked = micBlocked;
+            IsMicStandardActive = micBlocked;
 
+            if (!micBlocked)
+            {
+                MicStatusText = _localizationService.GetString("StatusUnblocked", "✅ Allowed");
+                MicStatusColor = "#81C784";
+                MicStandardText = _localizationService.GetString("StatusStandardInactive", "○ Standard Inactive");
+                MicStandardColor = "#81C784";
+            }
+            else if (state.Microphone.SecureState == SecureProtectionState.Active)
+            {
+                MicStatusText = _localizationService.GetString("StatusBlockedAdvanced", "🛡️ Blocked (Advanced)");
+                MicStatusColor = "#D32F2F";
+                MicStandardText = _localizationService.GetString("StatusStandardActive", "● Standard Active");
+                MicStandardColor = "#E57373";
+            }
+            else
+            {
+                MicStatusText = _localizationService.GetString("StatusBlockedStandard", "🔒 Blocked (Standard)");
+                MicStatusColor = "#E57373";
+                MicStandardText = _localizationService.GetString("StatusStandardActive", "● Standard Active");
+                MicStandardColor = "#E57373";
+            }
+
+            // Microphone Secure Compatibility fields
             switch (state.Microphone.SecureState)
             {
                 case SecureProtectionState.Active:
@@ -288,7 +376,6 @@ public sealed partial class MainViewModel : ObservableObject
                     IsMicSecureButtonEnabled = true;
                     IsMicSecureHintVisible = false;
                     break;
-
                 case SecureProtectionState.Available:
                     MicSecureText = _localizationService.GetString("StatusSecureAvailable", "○ Available to enable");
                     MicSecureBadgeColor = "#F57C00";
@@ -296,29 +383,49 @@ public sealed partial class MainViewModel : ObservableObject
                     IsMicSecureButtonEnabled = true;
                     IsMicSecureHintVisible = false;
                     break;
-
                 default:
                     MicSecureText = _localizationService.GetString("StatusSecureUnavailable", "🔒 Unavailable");
                     MicSecureBadgeColor = "#555555";
                     MicSecureButtonText = _localizationService.GetString("EnableSecure", "🔒 Enable Secure Protection");
                     IsMicSecureButtonEnabled = false;
                     MicSecureHint = _localizationService.GetString("SecureRequirementHint", "Enable Standard Protection first");
-                    IsMicSecureHintVisible = !micStdActive;
+                    IsMicSecureHintVisible = !micBlocked;
                     break;
             }
 
-            // === 3. Unified (Both) UI ===
-            var bothStdActive = camStdActive && micStdActive;
-            IsBothStandardActive = bothStdActive;
-            BothStandardText = bothStdActive
-                ? _localizationService.GetString("StatusStandardActive", "● Standard Active")
-                : _localizationService.GetString("StatusStandardInactive", "○ Standard Inactive");
-            BothStandardColor = bothStdActive ? "#E57373" : "#81C784";
+            // === 4. Unified (Both) UI ===
+            var bothBlocked = camBlocked && micBlocked;
+            IsBothBlocked = bothBlocked;
+            IsBothStandardActive = bothBlocked;
+
+            if (!bothBlocked)
+            {
+                BothStatusText = (camBlocked || micBlocked)
+                    ? _localizationService.GetString("StatusBlockedStandard", "🔒 Partially Blocked")
+                    : _localizationService.GetString("StatusUnblocked", "✅ Allowed");
+                BothStatusColor = (camBlocked || micBlocked) ? "#FFA726" : "#81C784";
+                BothStandardText = _localizationService.GetString("StatusStandardInactive", "○ Standard Inactive");
+                BothStandardColor = "#81C784";
+            }
+            else if (state.BothSecure)
+            {
+                BothStatusText = _localizationService.GetString("StatusBlockedAdvanced", "🛡️ Blocked (Advanced)");
+                BothStatusColor = "#D32F2F";
+                BothStandardText = _localizationService.GetString("StatusStandardActive", "● Standard Active");
+                BothStandardColor = "#E57373";
+            }
+            else
+            {
+                BothStatusText = _localizationService.GetString("StatusBlockedStandard", "🔒 Blocked (Standard)");
+                BothStatusColor = "#E57373";
+                BothStandardText = _localizationService.GetString("StatusStandardActive", "● Standard Active");
+                BothStandardColor = "#E57373";
+            }
 
             var camSecure = state.Camera.SecureState;
             var micSecure = state.Microphone.SecureState;
             var bothSecureActive = camSecure == SecureProtectionState.Active && micSecure == SecureProtectionState.Active;
-            var bothSecureAvailable = bothStdActive &&
+            var bothSecureAvailable = bothBlocked &&
                 (camSecure is SecureProtectionState.Available or SecureProtectionState.Active) &&
                 (micSecure is SecureProtectionState.Available or SecureProtectionState.Active);
 
@@ -345,7 +452,7 @@ public sealed partial class MainViewModel : ObservableObject
                 BothSecureButtonText = _localizationService.GetString("EnableSecure", "🔒 Enable Secure Protection");
                 IsBothSecureButtonEnabled = false;
                 BothSecureHint = _localizationService.GetString("SecureRequirementHint", "Enable Standard Protection first");
-                IsBothSecureHintVisible = !bothStdActive;
+                IsBothSecureHintVisible = !bothBlocked;
             }
 
             // Overall Badge
@@ -353,6 +460,8 @@ public sealed partial class MainViewModel : ObservableObject
                 SecurityBadgeText = "Hardened (Secure)";
             else if (state.BothProtected)
                 SecurityBadgeText = "Protected (Standard)";
+            else if (state.Camera.IsProtected || state.Microphone.IsProtected)
+                SecurityBadgeText = "Partially Protected";
             else
                 SecurityBadgeText = "Unprotected";
 
@@ -374,24 +483,52 @@ public sealed partial class MainViewModel : ObservableObject
 
     // --- Property Changed Event Handlers for ToggleSwitches ---
 
-    partial void OnIsCameraStandardActiveChanged(bool value)
+    partial void OnIsCameraBlockedChanged(bool value)
     {
         if (_isUpdating) return;
-        _ = ExecuteCameraStandardToggleAsync(value);
+        _ = ExecuteCameraToggleAsync(value);
     }
 
-    private async Task ExecuteCameraStandardToggleAsync(bool enable)
+    private async Task ExecuteCameraToggleAsync(bool enable)
     {
         ClearError();
-        Log.Information("User toggled Camera Standard Protection to {Enable}", enable);
+        Log.Information("User toggled Camera to {Enable}", enable);
 
         var result = enable
-            ? await _protectionService.EnableStandardProtectionAsync(BlockTarget.Camera)
-            : await _protectionService.DisableStandardProtectionAsync(BlockTarget.Camera);
+            ? await _protectionService.BlockDeviceAsync(BlockTarget.Camera)
+            : await _protectionService.UnblockDeviceAsync(BlockTarget.Camera);
 
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "Failed to update Camera Standard Protection");
+            ShowError(result.ErrorMessage ?? "Failed to update Camera protection");
+            await RefreshStateAsync();
+        }
+    }
+
+    partial void OnIsCameraStandardActiveChanged(bool value)
+    {
+        if (_isUpdating) return;
+        IsCameraBlocked = value;
+    }
+
+    partial void OnIsMicBlockedChanged(bool value)
+    {
+        if (_isUpdating) return;
+        _ = ExecuteMicToggleAsync(value);
+    }
+
+    private async Task ExecuteMicToggleAsync(bool enable)
+    {
+        ClearError();
+        Log.Information("User toggled Microphone to {Enable}", enable);
+
+        var result = enable
+            ? await _protectionService.BlockDeviceAsync(BlockTarget.Microphone)
+            : await _protectionService.UnblockDeviceAsync(BlockTarget.Microphone);
+
+        if (!result.Success)
+        {
+            ShowError(result.ErrorMessage ?? "Failed to update Microphone protection");
             await RefreshStateAsync();
         }
     }
@@ -399,26 +536,57 @@ public sealed partial class MainViewModel : ObservableObject
     partial void OnIsMicStandardActiveChanged(bool value)
     {
         if (_isUpdating) return;
-        _ = ExecuteMicStandardToggleAsync(value);
+        IsMicBlocked = value;
     }
 
-    private async Task ExecuteMicStandardToggleAsync(bool enable)
+    partial void OnIsBothBlockedChanged(bool value)
+    {
+        if (_isUpdating) return;
+        _ = ExecuteBothToggleAsync(value);
+    }
+
+    private async Task ExecuteBothToggleAsync(bool enable)
     {
         ClearError();
-        Log.Information("User toggled Microphone Standard Protection to {Enable}", enable);
+        Log.Information("User toggled Unified Control to {Enable}", enable);
 
         var result = enable
-            ? await _protectionService.EnableStandardProtectionAsync(BlockTarget.Microphone)
-            : await _protectionService.DisableStandardProtectionAsync(BlockTarget.Microphone);
+            ? await _protectionService.BlockDeviceAsync(BlockTarget.Both)
+            : await _protectionService.UnblockDeviceAsync(BlockTarget.Both);
 
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "Failed to update Microphone Standard Protection");
+            ShowError(result.ErrorMessage ?? "Failed to update Unified protection");
             await RefreshStateAsync();
         }
     }
 
-    // --- Secure Protection Buttons ---
+    partial void OnIsBothStandardActiveChanged(bool value)
+    {
+        if (_isUpdating) return;
+        IsBothBlocked = value;
+    }
+
+    partial void OnIsAdvancedProtectionEnabledChanged(bool value)
+    {
+        if (_isUpdating) return;
+        _ = ExecuteAdvancedProtectionToggleAsync(value);
+    }
+
+    private async Task ExecuteAdvancedProtectionToggleAsync(bool enable)
+    {
+        ClearError();
+        Log.Information("User toggled Advanced Protection to {Enable}", enable);
+
+        var result = await _protectionService.SetAdvancedProtectionAsync(enable);
+        if (!result.Success)
+        {
+            ShowError(result.ErrorMessage ?? "Failed to update Advanced Protection");
+            await RefreshStateAsync();
+        }
+    }
+
+    // --- Legacy Relay Commands for compatibility ---
 
     [RelayCommand]
     private async Task ToggleCameraSecureAsync()
@@ -438,30 +606,6 @@ public sealed partial class MainViewModel : ObservableObject
             BlockTarget.Microphone,
             state => state.Microphone.SecureState == SecureProtectionState.Active,
             "Microphone Secure Protection error");
-    }
-
-    // --- Unified (Both) Toggle ---
-
-    partial void OnIsBothStandardActiveChanged(bool value)
-    {
-        if (_isUpdating) return;
-        _ = ExecuteBothStandardToggleAsync(value);
-    }
-
-    private async Task ExecuteBothStandardToggleAsync(bool enable)
-    {
-        ClearError();
-        Log.Information("User toggled Both Standard Protection to {Enable}", enable);
-
-        var result = enable
-            ? await _protectionService.EnableStandardProtectionAsync(BlockTarget.Both)
-            : await _protectionService.DisableStandardProtectionAsync(BlockTarget.Both);
-
-        if (!result.Success)
-        {
-            ShowError(result.ErrorMessage ?? "Failed to update Both Standard Protection");
-            await RefreshStateAsync();
-        }
     }
 
     [RelayCommand]

@@ -15,6 +15,7 @@ public sealed record DesiredState
 
     public string Language { get; set; } = "es";
     public bool Autostart { get; set; }
+    public bool AdvancedProtectionEnabled { get; set; }
 }
 
 /// <summary>

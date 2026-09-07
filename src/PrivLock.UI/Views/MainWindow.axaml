@@ -80,6 +80,32 @@
                     </Grid>
                 </Border>
 
+                <!-- ================= ADVANCED PROTECTION (GLOBAL EXTENSION) CARD ================= -->
+                <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
+                    <StackPanel Spacing="10">
+                        <!-- Advanced Protection Header -->
+                        <Grid ColumnDefinitions="Auto,*">
+                            <TextBlock Grid.Column="0" Text="🛡️" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding AdvancedProtectionTitle}" FontSize="15" FontWeight="Bold" Foreground="White" />
+                                <TextBlock Text="{Binding AdvancedProtectionSubtitle}" FontSize="11" Foreground="#888888" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Height="1" Background="#333338" Margin="0,2" />
+
+                        <!-- Advanced Protection Toggle -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="{Binding AdvancedProtectionDesc}" FontSize="11" Foreground="#777777" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding AdvancedProtectionStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding AdvancedProtectionStatusColor}" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsAdvancedProtectionEnabled}"
+                                          VerticalAlignment="Center" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- ================= UNIFIED CONTROL CARD ================= -->
                 <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
                     <StackPanel Spacing="10">
@@ -94,31 +120,14 @@
 
                         <Border Height="1" Background="#333338" Margin="0,2" />
 
-                        <!-- Unified Standard Protection -->
+                        <!-- Unified Block Control -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding StandardProtectionTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#DDDDDD" />
                                 <TextBlock Text="{Binding UnifiedStandardDesc}" FontSize="11" Foreground="#777777" />
-                                <TextBlock Text="{Binding BothStandardText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding BothStandardColor}" Margin="0,2,0,0" />
+                                <TextBlock Text="{Binding BothStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding BothStatusColor}" Margin="0,2,0,0" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsBothStandardActive}"
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsBothBlocked}"
                                           VerticalAlignment="Center" />
-                        </Grid>
-
-                        <Border Height="1" Background="#2C2C32" Margin="0,2" />
-
-                        <!-- Unified Secure Protection -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding SecureProtectionTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#E0E0E0" />
-                                <TextBlock Text="{Binding BothSecureText}" FontSize="11" Foreground="{Binding BothSecureBadgeColor}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding BothSecureHint}" FontSize="10" Foreground="#FFA726" IsVisible="{Binding IsBothSecureHintVisible}" Margin="0,2,0,0" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="pill" Classes.active="{Binding IsBothSecureButtonEnabled}"
-                                    IsEnabled="{Binding IsBothSecureButtonEnabled}"
-                                    Command="{Binding ToggleBothSecureCommand}"
-                                    Content="{Binding BothSecureButtonText}"
-                                    VerticalAlignment="Center" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -137,31 +146,13 @@
 
                         <Border Height="1" Background="#333338" Margin="0,2" />
 
-                        <!-- Layer 1: Standard Protection -->
+                        <!-- Camera Block Control -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding StandardProtectionTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#DDDDDD" />
-                                <TextBlock Text="{Binding StandardProtectionDesc}" FontSize="11" Foreground="#777777" />
-                                <TextBlock Text="{Binding CameraStandardText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding CameraStandardColor}" Margin="0,2,0,0" />
+                                <TextBlock Text="{Binding CameraStatusText}" FontSize="12" FontWeight="SemiBold" Foreground="{Binding CameraStatusColor}" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsCameraStandardActive}"
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsCameraBlocked}"
                                           VerticalAlignment="Center" />
-                        </Grid>
-
-                        <Border Height="1" Background="#2C2C32" Margin="0,2" />
-
-                        <!-- Layer 2: Secure / Administrator Protection -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding SecureProtectionTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#E0E0E0" />
-                                <TextBlock Text="{Binding CameraSecureText}" FontSize="11" Foreground="{Binding CameraSecureBadgeColor}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding CameraSecureHint}" FontSize="10" Foreground="#FFA726" IsVisible="{Binding IsCameraSecureHintVisible}" Margin="0,2,0,0" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="pill" Classes.active="{Binding IsCameraSecureButtonEnabled}"
-                                    IsEnabled="{Binding IsCameraSecureButtonEnabled}"
-                                    Command="{Binding ToggleCameraSecureCommand}"
-                                    Content="{Binding CameraSecureButtonText}"
-                                    VerticalAlignment="Center" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -180,31 +171,13 @@
 
                         <Border Height="1" Background="#333338" Margin="0,2" />
 
-                        <!-- Layer 1: Standard Protection -->
+                        <!-- Microphone Block Control -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding StandardProtectionTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#DDDDDD" />
-                                <TextBlock Text="{Binding StandardProtectionDesc}" FontSize="11" Foreground="#777777" />
-                                <TextBlock Text="{Binding MicStandardText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding MicStandardColor}" Margin="0,2,0,0" />
+                                <TextBlock Text="{Binding MicStatusText}" FontSize="12" FontWeight="SemiBold" Foreground="{Binding MicStatusColor}" />
                             </StackPanel>
-                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsMicStandardActive}"
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsMicBlocked}"
                                           VerticalAlignment="Center" />
-                        </Grid>
-
-                        <Border Height="1" Background="#2C2C32" Margin="0,2" />
-
-                        <!-- Layer 2: Secure / Administrator Protection -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="{Binding SecureProtectionTitle}" FontSize="13" FontWeight="SemiBold" Foreground="#E0E0E0" />
-                                <TextBlock Text="{Binding MicSecureText}" FontSize="11" Foreground="{Binding MicSecureBadgeColor}" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding MicSecureHint}" FontSize="10" Foreground="#FFA726" IsVisible="{Binding IsMicSecureHintVisible}" Margin="0,2,0,0" />
-                            </StackPanel>
-                            <Button Grid.Column="1" Classes="pill" Classes.active="{Binding IsMicSecureButtonEnabled}"
-                                    IsEnabled="{Binding IsMicSecureButtonEnabled}"
-                                    Command="{Binding ToggleMicSecureCommand}"
-                                    Content="{Binding MicSecureButtonText}"
-                                    VerticalAlignment="Center" />
                         </Grid>
                     </StackPanel>
                 </Border>

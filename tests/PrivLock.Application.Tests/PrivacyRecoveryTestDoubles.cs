@@ -498,6 +498,7 @@ internal sealed class RecoveryHostDependencies :
         CameraSecure = _desiredState.CameraSecure,
         MicrophoneStandard = _desiredState.MicrophoneStandard,
         MicrophoneSecure = _desiredState.MicrophoneSecure,
+        AdvancedProtectionEnabled = _desiredState.AdvancedProtectionEnabled,
         Language = _desiredState.Language,
         Autostart = _desiredState.Autostart
     };

@@ -32,6 +32,7 @@ public sealed class ProtectionService
     public PlatformInfo PlatformInfo => _capabilityProvider.PlatformInfo;
     public bool IsShutdownStarted => Volatile.Read(ref _shutdownStarted) != 0;
     internal bool HasPendingDesiredStateCleanup => Volatile.Read(ref _desiredStateCleanupPending) != 0;
+    public bool IsAdvancedProtectionEnabled => _stateStore.Load().AdvancedProtectionEnabled;
 
     public ProtectionService(
         IDeviceProtectionProvider protectionProvider,
@@ -275,6 +276,109 @@ public sealed class ProtectionService
     }
 
     /// <summary>
+    /// Blocks the specified target. Applies standard protection, and if Advanced Protection is enabled globally,
+    /// immediately reinforces the target with secure/hardware-level protection.
+    /// </summary>
+    public async Task<OperationResult> BlockDeviceAsync(
+        BlockTarget target,
+        CancellationToken cancellationToken = default)
+    {
+        var stdResult = await EnableStandardProtectionAsync(target, cancellationToken);
+        if (!stdResult.Success)
+            return stdResult;
+
+        if (IsAdvancedProtectionEnabled)
+        {
+            var advResult = await EnableSecureProtectionAsync(target, cancellationToken);
+            if (!advResult.Success)
+                return advResult;
+        }
+
+        return stdResult;
+    }
+
+    /// <summary>
+    /// Unblocks the specified target, tearing down both secure and standard layers for that target,
+    /// while leaving global Advanced Protection and other targets unaffected.
+    /// </summary>
+    public Task<OperationResult> UnblockDeviceAsync(
+        BlockTarget target,
+        CancellationToken cancellationToken = default) =>
+        DisableStandardProtectionAsync(target, cancellationToken);
+
+    /// <summary>
+    /// Toggles global Advanced Protection without altering whether devices are blocked or unblocked.
+    /// If enabled: reinforces currently blocked devices with the advanced layer.
+    /// If disabled: strips the advanced layer from protected devices without unblocking them.
+    /// Idempotent: repeated calls produce consistent state without redundant mutations.
+    /// </summary>
+    public async Task<OperationResult> SetAdvancedProtectionAsync(
+        bool enable,
+        CancellationToken cancellationToken = default)
+    {
+        var desired = _stateStore.Load();
+        desired.AdvancedProtectionEnabled = enable;
+        _stateStore.Save(desired);
+
+        var currentState = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+
+        if (enable)
+        {
+            var cameraNeedsSecure = currentState.Camera.IsProtected &&
+                                    currentState.Camera.SecureState != SecureProtectionState.Active;
+            var micNeedsSecure = currentState.Microphone.IsProtected &&
+                                 currentState.Microphone.SecureState != SecureProtectionState.Active;
+
+            BlockTarget? targetToSecure = (cameraNeedsSecure, micNeedsSecure) switch
+            {
+                (true, true) => BlockTarget.Both,
+                (true, false) => BlockTarget.Camera,
+                (false, true) => BlockTarget.Microphone,
+                (false, false) => null
+            };
+
+            if (targetToSecure.HasValue)
+            {
+                var result = await EnableSecureProtectionAsync(targetToSecure.Value, cancellationToken);
+                if (!result.Success)
+                {
+                    var reverted = _stateStore.Load();
+                    reverted.AdvancedProtectionEnabled = false;
+                    _stateStore.Save(reverted);
+                    await PublishVerifiedStateAsync(cancellationToken);
+                    return result;
+                }
+            }
+        }
+        else
+        {
+            var cameraHasSecure = currentState.Camera.SecureState == SecureProtectionState.Active;
+            var micHasSecure = currentState.Microphone.SecureState == SecureProtectionState.Active;
+
+            BlockTarget? targetToDisable = (cameraHasSecure, micHasSecure) switch
+            {
+                (true, true) => BlockTarget.Both,
+                (true, false) => BlockTarget.Camera,
+                (false, true) => BlockTarget.Microphone,
+                (false, false) => null
+            };
+
+            if (targetToDisable.HasValue)
+            {
+                var result = await DisableSecureProtectionAsync(targetToDisable.Value, cancellationToken);
+                if (!result.Success)
+                {
+                    await PublishVerifiedStateAsync(cancellationToken);
+                    return result;
+                }
+            }
+        }
+
+        await PublishVerifiedStateAsync(cancellationToken);
+        return OperationResult.Ok();
+    }
+
+    /// <summary>
     /// Startup recovery runs before the ViewModel/UI exists and before any new mutation is allowed.
     /// </summary>
     public async Task<PrivacyRecoveryResult> RecoverPreviousSessionAsync(
@@ -368,8 +472,11 @@ public sealed class ProtectionService
 
     public void AbortShutdown() => Interlocked.Exchange(ref _shutdownStarted, 0);
 
-    public Task<FullProtectionState> GetCurrentStateAsync(CancellationToken cancellationToken = default) =>
-        _protectionProvider.GetProtectionStateAsync(cancellationToken);
+    public async Task<FullProtectionState> GetCurrentStateAsync(CancellationToken cancellationToken = default)
+    {
+        var state = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+        return state with { AdvancedProtectionEnabled = IsAdvancedProtectionEnabled };
+    }
 
     public Task<IReadOnlyList<DeviceInfo>> GetDetectedDevicesAsync(CancellationToken cancellationToken = default) =>
         _deviceDetector.DetectAllAsync(cancellationToken);
@@ -637,7 +744,7 @@ public sealed class ProtectionService
 
     private async Task PublishVerifiedStateAsync(CancellationToken cancellationToken)
     {
-        var state = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+        var state = await GetCurrentStateAsync(cancellationToken);
         StateChanged?.Invoke(state);
     }
 
