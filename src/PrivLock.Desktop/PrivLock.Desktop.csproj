@@ -9,6 +9,12 @@
     <AssemblyName>PrivLock</AssemblyName>
     <ApplicationManifest Condition="$([MSBuild]::IsOSPlatform('Windows'))">app.manifest</ApplicationManifest>
     <ApplicationIcon Condition="$([MSBuild]::IsOSPlatform('Windows'))">Assets\app.ico</ApplicationIcon>
+    <!-- Avalonia's UsePlatformDetect() discovers windowing backends (Avalonia.Win32.dll, etc.) via
+         assembly scanning. In .NET 10 single-file mode managed assemblies are loaded from the
+         in-memory bundle without disk extraction, which breaks this discovery and causes a
+         PlatformNotSupportedException in Dispatcher.MainLoop. Extracting all content restores
+         file-based assembly resolution that Avalonia requires. -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>

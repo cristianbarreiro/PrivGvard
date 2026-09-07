@@ -1,6 +1,15 @@
-# PrivLock — Agent Guidelines, Architecture & Security Rules
+# PrivGvard — Agent Guidelines, Architecture & Security Rules
 
-This document provides operational context, safety rules, architectural conventions, and engineering guidelines for AI agents working on **PrivLock**.
+This document provides operational context, safety rules, architectural conventions, and engineering guidelines for AI agents working on **PrivGvard**.
+
+> **Repository identity (audited 2026-09-06):** the requested product name is **PrivGvard**, while the repository, namespaces, assembly, solution and executable still use `CamMicBlocker`/`PrivLock`. Do not perform a global rename unless the task explicitly requests a branding migration. The canonical, model-neutral context is [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md); the audit and staged plan are in [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md).
+
+## 0. Current Baseline — Do Not Overstate Support
+
+- The Windows path is the only path with a production-grade durable privacy-session journal, ownership attestations, authenticated on-demand privileged worker, and recovery validation.
+- Linux and macOS providers are integration scaffolds. Their capability providers currently expose `CapabilityLevel.None` and production DI uses `UnsupportedPrivacySessionPlatformAdapter`. Do not describe either platform as safely supported for camera/microphone mutation until exact capture, verification, rollback and hotplug tests exist.
+- The current solution has **156 passing tests** in the latest local run: 25 Domain, 30 Infrastructure, 58 Application and 43 Windows. Documentation claiming 61 tests is stale.
+- A method returning `OperationResult.Ok()` is not evidence that a device is blocked. Only a fresh native observation may justify a verified protected state.
 
 ---
 
@@ -11,14 +20,14 @@ This document provides operational context, safety rules, architectural conventi
   - PrivLock runs as **one single application (`PrivLock.exe` / `PrivLock`)** starting with standard unprivileged user rights (`asInvoker`).
   - There is **NO second elevated application** (`PrivLock.Elevated.exe` is strictly prohibited).
   - Privileged actions (e.g., PnP node state, HKLM Registry Group Policies) request OS authorization/elevation **strictly on-demand** at the moment the user triggers that specific action.
-- **Official Native APIs First**: Always use officially supported platform APIs:
-  - **Windows**: `CfgMgr32.dll` PnP node management, `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` Group Policies, WMI `Win32_PnPEntity`.
-  - **Linux**: V4L2 device node control (`/dev/video*`), `sysfs`/`udev` driver unbind, PipeWire (`wpctl`) and PulseAudio (`pactl`) audio source management, Polkit (`pkexec`).
-  - **macOS**: CoreAudio HAL (`AudioObjectSetPropertyData` / `kAudioDevicePropertyMute`), `AVFoundation` camera state inspection, `LaunchAgents` plist.
+- **Official Native APIs First**: Always use officially supported platform APIs. These are design targets, not permission to enable unfinished production paths:
+  - **Windows**: `CfgMgr32.dll` PnP node management, `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` Group Policies, WMI `Win32_PnPEntity`, and Core Audio endpoint state.
+  - **Linux**: V4L2 device discovery, PipeWire/PulseAudio or WirePlumber APIs, and Polkit only after an exact reversible state model exists. Never use a blind `chmod`/`chmod 660` pair as a restore strategy.
+  - **macOS**: CoreAudio HAL for exact input state and AVFoundation/TCC for truthful camera capability reporting. macOS TCC must not be represented as if the application can silently revoke another app's camera permission.
 - **Zero Low-Level Hardware Tampering**: Never attempt to modify hardware firmware, device registers, flash memory, EEPROM, or kernel-mode driver binaries. All hardware protection must be strictly software-level PnP node state toggling, driver unbinds, sound server locks, and OS Group Policy enforcement.
 - **Zero Security Bypasses**: Never implement UAC bypasses, bypass driver signature enforcement, disable Windows Defender, bypass macOS SIP / hardened runtime, or alter system security subsystems. Security and system stability take priority over implementation convenience.
 - **Fail Securely & Verified State**: Never report a device as "Blocked" unless verified against actual state (`EffectiveStatus`).
-- **No Swallowing Errors**: Never catch exceptions silently (`catch { }` is strictly prohibited). Critical driver, PnP, permission, or hardware errors must be logged with context and passed to `CrashReporter`.
+- **No Swallowing Errors**: Never catch exceptions silently (`catch { }` is strictly prohibited). Critical driver, PnP, permission, or hardware errors must be logged with context and passed to `CrashReporter`. Native command exit codes, timeouts and verification failures are operation failures, not warnings that can be converted into success.
 
 ### B. Risk Classification & Validation Policy
 Validate changes proportionally to their potential impact on system stability:
@@ -51,19 +60,21 @@ Before committing changes to hardware controllers, policy managers, sound server
 
 ## 3. Dynamic On-Demand Elevation Architecture (6-Point Assessment)
 
+The following architecture is implemented for Windows. Linux and macOS elevation providers are present as platform seams, but their privacy mutation and persistent recovery paths are not production-enabled.
+
 ### A. Architectural Rationale & Threat Model
 1. **Why On-Demand Elevation is Used**:
-   Windows NT and Linux kernel security models require administrative permissions to modify machine-wide registry keys (`HKLM`) and toggle PnP device states (`CfgMgr32.dll!CM_Disable_DevNode`).
-2. **What Privileged Operations Are Performed**:
+   Windows security requires administrative permissions to modify machine-wide registry keys (`HKLM`) and toggle PnP device states (`CfgMgr32.dll!CM_Disable_DevNode`). Linux/macOS elevation must not be introduced for privacy mutation until an exact recovery adapter exists.
+2. **What Privileged Operations Are Performed on Windows**:
    - Setting/removing `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` keys (`LetAppsAccessCamera`, `LetAppsAccessMicrophone`).
    - Disabling/enabling PnP device nodes in `CfgMgr32.dll` via device instance IDs.
-   - Modifying `/dev/video*` permissions on Linux when requested.
-3. **Why Single-Binary Self-Invocation is Superior**:
-   Instead of a permanent elevated daemon or a separate binary (`PrivLock.Elevated.exe`), `PrivLock` invokes its own executable (`Environment.ProcessPath`) as a transient authenticated `--privileged-worker` using Windows UAC `Verb="runas"` or Linux `pkexec`. The legacy public `--privileged-exec` mutation dispatcher is prohibited because it bypasses the recovery journal.
+   - Linux `/dev/video*`, driver unbind, PipeWire and macOS authorization changes are roadmap items, not currently supported operations.
+3. **Why Single-Binary Self-Invocation is Superior on Windows**:
+   Instead of a permanent elevated daemon or a separate binary (`PrivLock.Elevated.exe`), `PrivLock` invokes its own executable (`Environment.ProcessPath`) as a transient authenticated `--privileged-worker` using Windows UAC `Verb="runas"`. The legacy public `--privileged-exec` mutation dispatcher is prohibited because it bypasses the recovery journal.
 4. **Communication & IPC**:
-   - Short-lived transient execution (~50ms lifetime).
+   - Windows uses short-lived transient execution and a bounded, versioned named-pipe protocol.
    - The CLI carries only a random pipe name, parent PID, and 256-bit nonce.
-   - Commands/results use a bounded, versioned named-pipe protocol with ACL, nonce, request correlation, and bilateral kernel PID verification; there is no result temp file.
+   - ACL, nonce, request correlation and bilateral kernel PID verification are required; there is no result temp file. Linux/macOS have no equivalent production worker path yet.
 5. **Minimizing Attack Surface**:
    - The main application runs with unprivileged `asInvoker` token.
    - The authenticated worker implements a closed per-resource whitelist (`apply-policy`, `restore-policy`, `apply-device`, `restore-device`, `verify-policy-ownership`, `verify-device-ownership`, `ping`) and revalidates canonical targets immediately before native calls.
@@ -136,7 +147,7 @@ src/
 dotnet build CamMicBlocker.sln
 ```
 
-### Run Full Test Suite (61 Tests)
+### Run Full Test Suite (156 Tests at the 2026-09-06 Baseline)
 ```powershell
 dotnet test CamMicBlocker.sln
 ```
@@ -162,3 +173,11 @@ dotnet publish src/PrivLock.Desktop/PrivLock.Desktop.csproj -c Release -r linux-
 ```powershell
 dotnet publish src/PrivLock.Desktop/PrivLock.Desktop.csproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -o publish_out/osx-arm64
 ```
+
+## 6. AI-Assisted Engineering Workflow
+
+1. Read [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md) before making architectural assumptions.
+2. For an audit, use [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md) as the current evidence baseline and update it when findings change.
+3. For implementation, state the affected OS subsystem, mutation boundary, rollback proof, verification observation and test plan before editing high-risk code.
+4. Treat README marketing text, generated publish folders and legacy `src/CamMicBlocker` files as non-authoritative unless the task explicitly includes them.
+5. If a requested feature cannot be implemented with exact capture, verification and recovery, keep it read-only or return an explicit unsupported result. Never make a partial implementation look protected.

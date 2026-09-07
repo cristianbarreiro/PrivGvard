@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="assets/logo/cammicroblocker_logo.png" alt="PrivLock Logo" width="128" />
-  <h1 align="center">PrivLock — Cross-Platform Camera &amp; Microphone Blocker</h1>
+  <img src="assets/logo/cammicroblocker_logo.png" alt="PrivGvard Logo" width="128" />
+  <h1 align="center">PrivGvard — Privacy Control for Camera &amp; Microphone</h1>
 </p>
 
 <p align="center">
@@ -11,9 +11,13 @@
   <img src="https://img.shields.io/badge/Language-Español%20%7C%20English-007ACC?style=for-the-badge" alt="i18n Support" />
 </p>
 
-**PrivLock** is a native, high-performance security utility for **Windows**, **Linux**, and **macOS** (built with C# / .NET 10 and Avalonia UI), designed to **reliably, quickly, and 100% reversibly block and unblock access to your camera and microphone**.
+**PrivGvard** is intended to be a native, transparent privacy utility for **Windows**, **Linux**, and **macOS** (C# / .NET 10 and Avalonia UI). The current verified implementation is Windows-first: it focuses on exact state capture, on-demand authorization, effective-state verification and journaled recovery. Linux and macOS remain discovery/UI scaffolds until their native recovery adapters are complete.
 
-PrivLock adheres to the **Principle of Least Privilege**: it runs as **one single application** with standard user permissions by default, elevating privileges **only on-demand** when an administrative action is specifically executed.
+The active code still uses the historical names `PrivLock` and `CamMicBlocker`. This README uses the desired product name `PrivGvard`; a full branding migration is intentionally a separate task.
+
+PrivGvard follows the **Principle of Least Privilege**: it runs as **one single application** with standard user permissions by default, elevating privileges **only on-demand** for an explicitly authorized operation.
+
+> **Support boundary:** compiling a Linux or macOS artifact does not mean that camera/microphone mutation is supported on that platform. The capability providers currently report `None`, and persistent recovery is not implemented there.
 
 ---
 
@@ -23,9 +27,9 @@ PrivLock adheres to the **Principle of Least Privilege**: it runs as **one singl
 
 | Platform | Format | Architecture | Download Link |
 | :--- | :---: | :---: | :---: |
-| 🪟 **Windows** | Portable Single-File / Setup | `win-x64`, `win-arm64` | [Download Windows Release](https://github.com/cristianbarreiro/PrivLock/releases) |
-| 🐧 **Linux** | Single-File Executable + `.desktop` | `linux-x64`, `linux-arm64` | [Download Linux Release](https://github.com/cristianbarreiro/PrivLock/releases) |
-| 🍎 **macOS** | Native Application Bundle (`.app`) | `osx-arm64` (Apple Silicon), `osx-x64` | [Download macOS Release](https://github.com/cristianbarreiro/PrivLock/releases) |
+| 🪟 **Windows** | Portable Single-File / Setup target | `win-x64`, `win-arm64` | Release support candidate; validate the published release notes |
+| 🐧 **Linux** | Build/publish target | `linux-x64`, `linux-arm64` | Discovery/UI only; privacy mutation not supported yet |
+| 🍎 **macOS** | Build/publish target | `osx-arm64`, `osx-x64` | Discovery/UI only; privacy mutation not supported yet |
 
 </div>
 
@@ -33,22 +37,19 @@ PrivLock adheres to the **Principle of Least Privilege**: it runs as **one singl
 
 ## ✨ Key Features
 
-- 🛡️ **Native Multi-Layer Protection by Platform**:
-  - **Windows (Dual-Layer)**:
-    1. *System Policy Layer*: Enforces group policies in `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` for Store and Desktop apps.
-    2. *Hardware Controller Layer*: Calls Win32 `CfgMgr32.dll` (`CM_Disable_DevNode` / `CM_Enable_DevNode`) directly to disable PnP device nodes.
-  - **Linux (V4L2 + PipeWire / PulseAudio)**:
-    1. *Camera*: Device node permission revocation (`/dev/video*`) and USB driver unbinding via `sysfs`/`udev`.
-    2. *Microphone*: Direct source mute and lock via WirePlumber/PipeWire (`wpctl`) and PulseAudio (`pactl`) — *requires no root elevation*.
-  - **macOS (CoreAudio HAL)**:
-    1. *Microphone*: Direct hardware input mute and master volume clamp via CoreAudio HAL (`AudioObjectSetPropertyData`).
-    2. *Camera*: TCC permission inspection and active stream verification.
+- 🛡️ **Capability-aware protection**:
+  - **Windows (current primary target)**:
+    1. *Policy layer*: captures and controls the supported AppPrivacy values with exact original value/type/existence tracking.
+    2. *Device/audio layer*: uses verified PnP and capture-endpoint state through the authenticated, short-lived elevated worker.
+    3. *Recovery layer*: persists per-resource intent and restores only confirmed PrivGvard-owned changes.
+  - **Linux (roadmap)**: discovery and experimental controller code exist, but production capabilities are `None`. No camera/microphone privacy mutation should be advertised until exact PipeWire/V4L2 state capture and recovery are implemented.
+  - **macOS (roadmap)**: discovery and experimental CoreAudio code exist, but production capabilities are `None`. TCC is an OS privacy boundary, not a silent revoke API; only verified, reversible capabilities may be enabled.
 - ⚡ **Single Application & Dynamic On-Demand Elevation**:
   - Starts as a standard user process (`asInvoker`).
-  - When a privileged operation is requested, PrivLock triggers the OS authorization (Windows UAC, Linux Polkit, macOS Authorization) **strictly on-demand**.
+  - On Windows, the authenticated worker requests UAC **strictly on-demand** for the exact journaled operation. Linux/macOS authorization is roadmap work and must not be inferred from the presence of an elevation provider.
   - No separate `PrivLock.Elevated.exe` binary — everything is self-contained.
 - 🎯 **Transparent Capabilities Model**:
-  - PrivLock explicitly reports what each operating system supports without false security claims.
+  - PrivGvard exposes supported, read-only, unknown and unsupported states rather than inferring protection from a requested setting.
 - 🎨 **Modern Fluent Dark UI Design**:
   - Avalonia UI 11 with integrated custom title bar (38px), rounded card containers, and responsive layout.
 - 🌐 **Dynamic Multilingual Support (ES / EN)**:
@@ -81,7 +82,7 @@ PrivLock/
 │   ├── PrivLock.Domain.Tests/            # Domain unit tests
 │   ├── PrivLock.Infrastructure.Tests/    # Storage, crash reporting & localization tests
 │   ├── PrivLock.Application.Tests/       # Orchestration, on-demand elevation & business logic tests
-│   └── CamMicBlocker.Tests/              # Compatibility test suite
+│   └── CamMicBlocker.Tests/              # Legacy compatibility tests; not part of the active solution
 │
 └── .github/workflows/
     └── ci.yml                            # GitHub Actions CI matrix (Windows, Ubuntu, macOS)
@@ -101,7 +102,7 @@ cd PrivLock
 dotnet build CamMicBlocker.sln
 ```
 
-### 2. Run Test Suite (61 Tests)
+### 2. Run Test Suite (156 tests in the current local baseline)
 ```powershell
 dotnet test CamMicBlocker.sln
 ```
@@ -128,19 +129,21 @@ dotnet publish src/PrivLock.Desktop/PrivLock.Desktop.csproj -c Release -r osx-ar
 
 ## 🛡️ Security & Observability
 
-- **Least Privilege Architecture**: Runs standard user permissions by default (`asInvoker`), elevating privileges transiently (~50ms) only during privileged operations.
+- **Least Privilege Architecture**: Runs with standard user permissions by default (`asInvoker`), elevating privileges transiently only during an authorized Windows operation.
 - **Structured Diagnostic Logs**:
   - Windows: `%LOCALAPPDATA%\PrivLock\Logs\PrivLock-yyyyMMdd.log`
   - Linux: `~/.local/share/PrivLock/Logs/PrivLock-yyyyMMdd.log`
   - macOS: `~/Library/Application Support/PrivLock/Logs/PrivLock-yyyyMMdd.log`
 - **Post-Mortem Crash Reports**: Structured JSON reports generated in `.../PrivLock/CrashReports/` on unhandled exceptions.
-- **Fail-Secure Architecture**: Devices are verified against physical hardware state (`EffectiveStatus`) after every operation.
+- **Fail-Secure Architecture**: The application must not report a device as protected without a fresh effective-state observation. Windows has the current recovery-backed path; Linux/macOS remain unsupported for production privacy mutation.
+
+For the full audit, capability matrix and staged roadmap, see [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md) and [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md).
 
 ---
 
 ## 📄 License
 
-PrivLock is free and open-source software released under the **GNU General Public License v3.0 (GPL-3.0)**.
+PrivGvard (current code identity: PrivLock) is free and open-source software released under the **GNU General Public License v3.0 (GPL-3.0)**.
 
 ```text
 Copyright (C) 2026 Cristian Barreiro

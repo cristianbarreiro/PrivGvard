@@ -1,5 +1,7 @@
 # Reversible privacy sessions: validation and limits
 
+> **Support boundary (audited 2026-09-06):** this document describes the Windows recovery-backed path. Linux and macOS currently register `UnsupportedPrivacySessionPlatformAdapter` and expose no production privacy capability. Their experimental controllers must not be enabled or described as reversible protection until they implement the same capture/observe/restore contract.
+
 The supported host is `src/PrivLock.Desktop`. The legacy WPF project is excluded
 from the solution and installer. Windows recovery tracks original Registry value
 existence, type and data, PnP instance/problem state, and per-endpoint microphone
@@ -25,7 +27,8 @@ resources; small comparison/write and durable-intent crash windows remain.
 New devices are captured only by a subsequent protection operation. Unplugged
 owned devices remain pending until a later recovery pass can observe them again.
 No permanent elevated watchdog is installed. Linux/macOS mutations are disabled
-in production until exact recovery adapters are implemented.
+in production until exact recovery adapters are implemented. A build or published
+artifact for a Linux/macOS RID is not evidence of privacy capability.
 
 ## Nine-point risk assessment
 
