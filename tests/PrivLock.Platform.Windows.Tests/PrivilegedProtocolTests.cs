@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using PrivLock.Domain.Models;
+using PrivLock.Domain.Results;
 using PrivLock.Platform.Windows.Devices;
 using PrivLock.Platform.Windows.Privileged;
 using Xunit;
@@ -89,12 +90,23 @@ public sealed class PrivilegedProtocolTests
     }
 
     [Fact]
-    public void ElevatedWorker_CommandAdmission_IsStrictlySingleUse()
+    public async Task Frame_DisconnectType_RoundTripsCorrectly()
     {
-        var admission = new SinglePrivilegedCommandAdmission();
+        var frame = new PrivilegedPipeFrame
+        {
+            Version = PrivilegedPipeProtocol.CurrentVersion,
+            Type = PrivilegedPipeProtocol.Disconnect,
+            SessionNonce = new string('A', 64),
+            RequestId = "req-disconnect",
+            ProcessId = 123
+        };
+        await using var stream = new MemoryStream();
 
-        Assert.True(admission.TryAdmit());
-        Assert.False(admission.TryAdmit());
+        await PrivilegedPipeProtocol.WriteAsync(stream, frame, CancellationToken.None);
+        stream.Position = 0;
+        var decoded = await PrivilegedPipeProtocol.ReadAsync(stream, CancellationToken.None);
+
+        Assert.Equal(PrivilegedPipeProtocol.Disconnect, decoded.Type);
     }
 
     [Fact]
@@ -173,5 +185,73 @@ public sealed class PrivilegedProtocolTests
             BlockStatus.Unknown,
             WindowsProtectionProvider.EvaluateMicrophoneStandardStatus(
                 BlockStatus.Blocked, true, []));
+    }
+
+    [Fact]
+    public async Task SessionProtocol_SupportsMultipleCommandsAndCleanDisconnect()
+    {
+        await using var stream = new MemoryStream();
+        var nonce = new string('A', 64);
+
+        // 1. Handshake frame
+        await PrivilegedPipeProtocol.WriteAsync(stream, new PrivilegedPipeFrame
+        {
+            Version = PrivilegedPipeProtocol.CurrentVersion,
+            Type = PrivilegedPipeProtocol.Hello,
+            SessionNonce = nonce,
+            RequestId = "hello-1",
+            ProcessId = 123
+        }, CancellationToken.None);
+
+        // 2. Command 1 frame
+        await PrivilegedPipeProtocol.WriteAsync(stream, new PrivilegedPipeFrame
+        {
+            Version = PrivilegedPipeProtocol.CurrentVersion,
+            Type = PrivilegedPipeProtocol.Command,
+            SessionNonce = nonce,
+            RequestId = "cmd-1",
+            ProcessId = 123,
+            Command = "ping",
+            Argument = string.Empty
+        }, CancellationToken.None);
+
+        // 3. Command 2 frame over same stream
+        await PrivilegedPipeProtocol.WriteAsync(stream, new PrivilegedPipeFrame
+        {
+            Version = PrivilegedPipeProtocol.CurrentVersion,
+            Type = PrivilegedPipeProtocol.Command,
+            SessionNonce = nonce,
+            RequestId = "cmd-2",
+            ProcessId = 123,
+            Command = "ping",
+            Argument = string.Empty
+        }, CancellationToken.None);
+
+        // 4. Disconnect frame
+        await PrivilegedPipeProtocol.WriteAsync(stream, new PrivilegedPipeFrame
+        {
+            Version = PrivilegedPipeProtocol.CurrentVersion,
+            Type = PrivilegedPipeProtocol.Disconnect,
+            SessionNonce = nonce,
+            RequestId = "disconnect",
+            ProcessId = 123
+        }, CancellationToken.None);
+
+        stream.Position = 0;
+
+        var f1 = await PrivilegedPipeProtocol.ReadAsync(stream, CancellationToken.None);
+        Assert.Equal(PrivilegedPipeProtocol.Hello, f1.Type);
+        Assert.Equal("hello-1", f1.RequestId);
+
+        var f2 = await PrivilegedPipeProtocol.ReadAsync(stream, CancellationToken.None);
+        Assert.Equal(PrivilegedPipeProtocol.Command, f2.Type);
+        Assert.Equal("cmd-1", f2.RequestId);
+
+        var f3 = await PrivilegedPipeProtocol.ReadAsync(stream, CancellationToken.None);
+        Assert.Equal(PrivilegedPipeProtocol.Command, f3.Type);
+        Assert.Equal("cmd-2", f3.RequestId);
+
+        var f4 = await PrivilegedPipeProtocol.ReadAsync(stream, CancellationToken.None);
+        Assert.Equal(PrivilegedPipeProtocol.Disconnect, f4.Type);
     }
 }

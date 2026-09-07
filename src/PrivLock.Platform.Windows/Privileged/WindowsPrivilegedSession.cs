@@ -24,8 +24,13 @@ public sealed class WindowsPrivilegedSession : IDisposable
     private string? _sessionNonce;
     private long _requestSequence;
     private bool _isElevatedSessionActive;
+    private int _elevationLaunchCount;
 
     public static WindowsPrivilegedSession Instance => InstanceLazy.Value;
+
+    public int ElevationLaunchCount => Volatile.Read(ref _elevationLaunchCount);
+
+    public void ResetElevationLaunchCount() => Interlocked.Exchange(ref _elevationLaunchCount, 0);
 
     public bool IsSessionActive
     {
@@ -47,8 +52,8 @@ public sealed class WindowsPrivilegedSession : IDisposable
 
         await _commandGate.WaitAsync();
         var dispatchStarted = false;
+        var connectionHealthy = true;
         OperationResult result;
-        var quiesced = false;
         try
         {
             await EnsureSessionActiveAsync();
@@ -86,6 +91,7 @@ public sealed class WindowsPrivilegedSession : IDisposable
                 !string.Equals(response.RequestId, requestId, StringComparison.Ordinal) ||
                 response.Result == null)
             {
+                connectionHealthy = false;
                 result = OperationResult.Fail(
                     "Elevated worker returned an unauthenticated or mismatched response.",
                     outcomeUncertain: true,
@@ -98,11 +104,13 @@ public sealed class WindowsPrivilegedSession : IDisposable
         }
         catch (global::System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
+            connectionHealthy = false;
             Log.Warning("User cancelled UAC elevation prompt for elevated session");
             result = OperationResult.Fail("Operation cancelled: Administrator permissions were denied.");
         }
         catch (OperationCanceledException ex)
         {
+            connectionHealthy = false;
             Log.Error(ex, "Elevated command timed out: Command={Command}", command);
             result = OperationResult.Fail(
                 "Elevated operation timed out; helper quiescence is being enforced.",
@@ -111,6 +119,7 @@ public sealed class WindowsPrivilegedSession : IDisposable
         }
         catch (Exception ex)
         {
+            connectionHealthy = false;
             Log.Error(ex, "Failed to execute command '{Command}' via elevated session", command);
             result = OperationResult.Fail(
                 $"Elevated worker error: {ex.Message}",
@@ -119,25 +128,28 @@ public sealed class WindowsPrivilegedSession : IDisposable
         }
         finally
         {
-            // The elevated worker is single-command by contract. Prove it has exited before
-            // allowing another command to launch a new worker.
-            quiesced = CloseSessionCore();
-            if (!quiesced)
-                Log.Error("Single-command elevated worker did not quiesce after command completion");
+            if (!connectionHealthy)
+            {
+                CloseSessionCore();
+            }
             _commandGate.Release();
         }
 
-        return quiesced
-            ? result
-            : OperationResult.Fail(
-                "Single-command elevated worker did not exit; mutation reconciliation is deferred until startup quiescence.",
-                result.Details,
-                outcomeUncertain: dispatchStarted || result.OutcomeUncertain,
-                executionStillInFlight: true);
+        return result;
     }
 
     private async Task EnsureSessionActiveAsync()
     {
+        lock (_lock)
+        {
+            if (_isElevatedSessionActive &&
+                _pipeServer is { IsConnected: true } &&
+                _workerProcess is { HasExited: false })
+            {
+                return;
+            }
+        }
+
         var exePath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exePath) || !File.Exists(exePath))
             throw new InvalidOperationException("Cannot locate current executable path for privileged session.");
@@ -175,6 +187,8 @@ public sealed class WindowsPrivilegedSession : IDisposable
             candidateProcess = Process.Start(startInfo)
                 ?? throw new InvalidOperationException("Failed to launch elevated session worker process.");
 
+            Interlocked.Increment(ref _elevationLaunchCount);
+
             using var connectionTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
             await AcceptAuthenticatedWorkerAsync(candidatePipe, candidateProcess, nonce, connectionTimeout.Token);
 
@@ -188,7 +202,7 @@ public sealed class WindowsPrivilegedSession : IDisposable
 
             candidatePipe = null;
             candidateProcess = null;
-            Log.Information("Authenticated single-command elevated worker established");
+            Log.Information("Authenticated elevated worker session established");
         }
         catch
         {
@@ -263,6 +277,24 @@ public sealed class WindowsPrivilegedSession : IDisposable
     }
 
     /// <summary>
+    /// Begins a scoped elevation session so all privileged operations within the scope
+    /// share a single elevated worker process (at most 1 UAC prompt).
+    /// </summary>
+    public async Task<IDisposable> BeginElevationScopeAsync(CancellationToken cancellationToken = default)
+    {
+        await _commandGate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureSessionActiveAsync();
+            return new ElevationScope(this);
+        }
+        finally
+        {
+            _commandGate.Release();
+        }
+    }
+
+    /// <summary>
     /// Ends the helper and proves process/lease quiescence before callers reconcile OS state.
     /// </summary>
     public bool CloseSession()
@@ -282,14 +314,36 @@ public sealed class WindowsPrivilegedSession : IDisposable
     {
         NamedPipeServerStream? pipe;
         Process? worker;
+        string? nonce;
         lock (_lock)
         {
             _isElevatedSessionActive = false;
             pipe = _pipeServer;
             worker = _workerProcess;
+            nonce = _sessionNonce;
             _pipeServer = null;
             _workerProcess = null;
             _sessionNonce = null;
+        }
+
+        if (pipe is { IsConnected: true } && !string.IsNullOrEmpty(nonce))
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+                PrivilegedPipeProtocol.WriteAsync(pipe, new PrivilegedPipeFrame
+                {
+                    Version = PrivilegedPipeProtocol.CurrentVersion,
+                    Type = PrivilegedPipeProtocol.Disconnect,
+                    SessionNonce = nonce,
+                    RequestId = "disconnect",
+                    ProcessId = Environment.ProcessId
+                }, cts.Token).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Best-effort disconnect notification before pipe disposal
+            }
         }
 
         DisposeWithLogging(pipe, "pipe server");
@@ -301,6 +355,25 @@ public sealed class WindowsPrivilegedSession : IDisposable
     }
 
     public void Dispose() => CloseSession();
+
+    private sealed class ElevationScope : IDisposable
+    {
+        private readonly WindowsPrivilegedSession _session;
+        private int _disposed;
+
+        public ElevationScope(WindowsPrivilegedSession session)
+        {
+            _session = session;
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _session.CloseSession();
+            }
+        }
+    }
 
     private static bool StopAndDisposeWorker(Process? process)
     {

@@ -519,6 +519,141 @@ public class AdvancedProtectionCoordinationTests
         Assert.False(service.IsAdvancedProtectionEnabled);
     }
 
+    /// <summary>
+    /// Mandatory Test - Caso A:
+    /// Camera = BLOCKED, Microphone = BLOCKED, Advanced OFF -> Usuario: Advanced ON.
+    /// Esperado: elevation requests = 1, CameraAdvanced = true, MicrophoneAdvanced = true.
+    /// </summary>
+    [Fact]
+    public async Task CasoA_BothBlocked_TurnOnAdvanced_RequiresExactlyOneElevationRequest()
+    {
+        var service = CreateService();
+
+        // Setup: Both Camera and Microphone are blocked, Advanced is OFF
+        await service.BlockDeviceAsync(BlockTarget.Camera);
+        await service.BlockDeviceAsync(BlockTarget.Microphone);
+        _nativeMock.Invocations.Clear();
+
+        // Action: User activates Advanced Protection
+        var advResult = await service.SetAdvancedProtectionAsync(true);
+        Assert.True(advResult.Success);
+
+        // Verification: Exactly 1 privileged operation requested (for BlockTarget.Both)
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()), Times.Once);
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.DisableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // State verification
+        var state = await service.GetCurrentStateAsync();
+        Assert.True(state.Camera.IsProtected);
+        Assert.True(state.CameraAdvancedProtected);
+        Assert.True(state.Microphone.IsProtected);
+        Assert.True(state.MicrophoneAdvancedProtected);
+        Assert.True(state.BothSecure);
+    }
+
+    /// <summary>
+    /// Mandatory Test - Caso B:
+    /// Camera = BLOCKED, Microphone = UNBLOCKED, Advanced OFF -> Usuario: Advanced ON.
+    /// Esperado: elevation requests = 1, CameraAdvanced = true, Microphone untouched.
+    /// </summary>
+    [Fact]
+    public async Task CasoB_CameraBlocked_MicUnlocked_TurnOnAdvanced_RequiresExactlyOneElevationRequest()
+    {
+        var service = CreateService();
+
+        // Setup: Only Camera is blocked, Microphone is unblocked, Advanced is OFF
+        await service.BlockDeviceAsync(BlockTarget.Camera);
+        _nativeMock.Invocations.Clear();
+
+        // Action: User activates Advanced Protection
+        var advResult = await service.SetAdvancedProtectionAsync(true);
+        Assert.True(advResult.Success);
+
+        // Verification: Exactly 1 privileged operation requested (for BlockTarget.Camera only)
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()), Times.Once);
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.DisableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // State verification: Camera advanced, Microphone untouched (allowed, not advanced)
+        var state = await service.GetCurrentStateAsync();
+        Assert.True(state.Camera.IsProtected);
+        Assert.True(state.CameraAdvancedProtected);
+        Assert.False(state.Microphone.IsProtected);
+        Assert.False(state.MicrophoneAdvancedProtected);
+    }
+
+    /// <summary>
+    /// Mandatory Test - Caso C:
+    /// Camera + Microphone advanced -> Usuario: Advanced OFF.
+    /// Esperado: elevation requests = 1, advanced removed from Camera and Microphone, both remain blocked.
+    /// </summary>
+    [Fact]
+    public async Task CasoC_BothAdvanced_TurnOffAdvanced_RequiresExactlyOneElevationRequest()
+    {
+        var service = CreateService();
+
+        // Setup: Both are blocked and advanced
+        await service.SetAdvancedProtectionAsync(true);
+        await service.BlockDeviceAsync(BlockTarget.Both);
+        _nativeMock.Invocations.Clear();
+
+        // Action: User turns Advanced Protection OFF
+        var advResult = await service.SetAdvancedProtectionAsync(false);
+        Assert.True(advResult.Success);
+
+        // Verification: Exactly 1 privileged operation requested (DisableSecureProtection for Both)
+        _nativeMock.Verify(n => n.DisableSecureProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()), Times.Once);
+        _nativeMock.Verify(n => n.DisableSecureProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.DisableSecureProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.DisableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // State verification: Advanced removed from both, both remain blocked standard
+        var state = await service.GetCurrentStateAsync();
+        Assert.True(state.Camera.IsProtected);
+        Assert.False(state.CameraAdvancedProtected);
+        Assert.True(state.Microphone.IsProtected);
+        Assert.False(state.MicrophoneAdvancedProtected);
+    }
+
+    /// <summary>
+    /// Mandatory Test - Caso D:
+    /// Advanced is ON: Camera blocked, Microphone unlocked.
+    /// Luego: Block Microphone.
+    /// Esperado: Microphone becomes blocked, Microphone receives Advanced Protection,
+    /// exactly 1 elevation request (no chain of multiple UAC prompts).
+    /// </summary>
+    [Fact]
+    public async Task CasoD_AdvancedOn_CameraBlocked_BlockMicrophone_RequiresAtMostOneElevationRequest()
+    {
+        var service = CreateService();
+
+        // Setup: Advanced is ON, Camera is blocked and advanced, Microphone is unlocked
+        await service.SetAdvancedProtectionAsync(true);
+        await service.BlockDeviceAsync(BlockTarget.Camera);
+        _nativeMock.Invocations.Clear();
+
+        // Action: User blocks Microphone
+        var blockResult = await service.BlockDeviceAsync(BlockTarget.Microphone);
+        Assert.True(blockResult.Success);
+
+        // Verification: Standard protection applied (0 elevation), then Secure protection applied (exactly 1 elevation)
+        _nativeMock.Verify(n => n.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Once);
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Once);
+        _nativeMock.Verify(n => n.EnableSecureProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()), Times.Never);
+        _nativeMock.Verify(n => n.DisableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // State verification: Both devices blocked and advanced
+        var state = await service.GetCurrentStateAsync();
+        Assert.True(state.CameraAdvancedProtected);
+        Assert.True(state.Microphone.IsProtected);
+        Assert.True(state.MicrophoneAdvancedProtected);
+        Assert.True(state.BothSecure);
+    }
+
     private sealed class InMemoryStateStore : IStateStore
     {
         private DesiredState _state = new();

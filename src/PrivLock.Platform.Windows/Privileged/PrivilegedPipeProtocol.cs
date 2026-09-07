@@ -16,6 +16,7 @@ internal static class PrivilegedPipeProtocol
     internal const string HelloAck = "hello-ack";
     internal const string Command = "command";
     internal const string Response = "response";
+    internal const string Disconnect = "disconnect";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 

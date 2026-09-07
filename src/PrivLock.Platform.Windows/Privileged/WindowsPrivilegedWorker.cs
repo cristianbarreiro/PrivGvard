@@ -87,45 +87,54 @@ public static class WindowsPrivilegedWorker
                 return 1;
             }
 
-            using var commandTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            PrivilegedPipeFrame request;
-            try
+            while (pipeClient.IsConnected && !parent.HasExited)
             {
-                request = PrivilegedPipeProtocol.ReadAsync(pipeClient, commandTimeout.Token)
-                    .GetAwaiter().GetResult();
+                using var commandTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                PrivilegedPipeFrame request;
+                try
+                {
+                    request = PrivilegedPipeProtocol.ReadAsync(pipeClient, commandTimeout.Token)
+                        .GetAwaiter().GetResult();
+                }
+                catch (EndOfStreamException)
+                {
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    Log.Information("Elevated worker session timed out on idle; exiting cleanly");
+                    break;
+                }
+
+                if (request.Type == PrivilegedPipeProtocol.Disconnect)
+                {
+                    Log.Information("Elevated worker received clean disconnect request");
+                    break;
+                }
+
+                if (!IsValidAuthenticatedCommand(request, sessionNonce, parentProcessId))
+                {
+                    Log.Error("Privileged worker rejected an invalid authenticated command frame");
+                    return 1;
+                }
+
+                var result = WindowsPrivilegedExecutor.ExecuteWorkerCommand(
+                    request.Command!,
+                    request.Argument!,
+                    ownerUserSid);
+
+                using var responseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                PrivilegedPipeProtocol.WriteAsync(pipeClient, new PrivilegedPipeFrame
+                {
+                    Version = PrivilegedPipeProtocol.CurrentVersion,
+                    Type = PrivilegedPipeProtocol.Response,
+                    SessionNonce = sessionNonce,
+                    RequestId = request.RequestId,
+                    ProcessId = Environment.ProcessId,
+                    Result = result
+                }, responseTimeout.Token).GetAwaiter().GetResult();
             }
-            catch (EndOfStreamException)
-            {
-                return 1;
-            }
 
-            if (!IsValidAuthenticatedCommand(request, sessionNonce, parentProcessId))
-            {
-                Log.Error("Privileged worker rejected an invalid authenticated command frame");
-                return 1;
-            }
-
-            var admission = new SinglePrivilegedCommandAdmission();
-            if (!admission.TryAdmit())
-                return 1;
-
-            var result = WindowsPrivilegedExecutor.ExecuteWorkerCommand(
-                request.Command!,
-                request.Argument!,
-                ownerUserSid);
-            using var responseTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            PrivilegedPipeProtocol.WriteAsync(pipeClient, new PrivilegedPipeFrame
-            {
-                Version = PrivilegedPipeProtocol.CurrentVersion,
-                Type = PrivilegedPipeProtocol.Response,
-                SessionNonce = sessionNonce,
-                RequestId = request.RequestId,
-                ProcessId = Environment.ProcessId,
-                Result = result
-            }, responseTimeout.Token).GetAwaiter().GetResult();
-
-            // One process handles exactly one command. It never waits for or accepts a second
-            // mutation while elevated.
             return 0;
         }
         catch (OperationCanceledException ex)
@@ -219,11 +228,4 @@ public static class WindowsPrivilegedWorker
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CloseHandle(IntPtr handle);
-}
-
-internal sealed class SinglePrivilegedCommandAdmission
-{
-    private int _admitted;
-
-    internal bool TryAdmit() => Interlocked.CompareExchange(ref _admitted, 1, 0) == 0;
 }
