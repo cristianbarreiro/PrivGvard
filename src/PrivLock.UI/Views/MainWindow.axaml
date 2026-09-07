@@ -4,8 +4,10 @@
         x:Class="PrivLock.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="PrivLock"
-        Width="460" Height="740"
-        MinWidth="420" MinHeight="660"
+        Width="460" Height="550"
+        MinWidth="460" MinHeight="550"
+        MaxWidth="460" MaxHeight="550"
+        CanResize="False"
         WindowStartupLocation="CenterScreen"
         Background="#181818"
         Foreground="#EDEDED"
@@ -13,7 +15,7 @@
         ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="38">
 
-    <Grid RowDefinitions="38,*,Auto">
+    <Grid RowDefinitions="38,Auto,Auto,Auto,Auto,Auto">
         <!-- 1. Custom Integrated TitleBar -->
         <Border Grid.Row="0" Background="#1A1A1D" IsHitTestVisible="True" PointerPressed="OnTitleBarPointerPressed">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
@@ -50,105 +52,104 @@
             </Grid>
         </Border>
 
-        <!-- 2. Main Scrollable Content (Hidden Scrollbars) -->
-        <ScrollViewer Grid.Row="1" Margin="16,10,16,10"
-                      VerticalScrollBarVisibility="Hidden"
-                      HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Spacing="10">
+        <!-- 2. System Status (Error Toast & Diagnostics Banner) -->
+        <StackPanel Grid.Row="1" Margin="16,8,16,0" Spacing="6">
+            <!-- Error Toast Banner -->
+            <Border Background="#C62828" CornerRadius="8" Padding="12,8"
+                    IsVisible="{Binding HasError}">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding ErrorMessage}" Foreground="White" FontSize="12" TextWrapping="Wrap" />
+                    <Button Grid.Column="1" Command="{Binding ClearErrorCommand}" Background="Transparent" BorderThickness="0" Padding="4">
+                        <TextBlock Text="✕" Foreground="White" FontSize="11" />
+                    </Button>
+                </Grid>
+            </Border>
 
-                <!-- Error Toast Banner -->
-                <Border Background="#C62828" CornerRadius="8" Padding="12,8"
-                        IsVisible="{Binding HasError}">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="{Binding ErrorMessage}" Foreground="White" FontSize="12" TextWrapping="Wrap" />
-                        <Button Grid.Column="1" Command="{Binding ClearErrorCommand}" Background="Transparent" BorderThickness="0" Padding="4">
-                            <TextBlock Text="✕" Foreground="White" FontSize="11" />
-                        </Button>
-                    </Grid>
-                </Border>
-
-                <!-- Platform Diagnostics & Badge Banner -->
-                <Border Background="#1F1F22" CornerRadius="8" Padding="12,8" BorderThickness="1" BorderBrush="#2C2C30">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <StackPanel Grid.Column="0" Spacing="2">
-                            <TextBlock Text="{Binding PlatformName}" FontSize="11" Foreground="#888888" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding CapabilitiesSummary}" FontSize="11" Foreground="#007ACC" />
-                        </StackPanel>
-                        <Border Grid.Column="1" Background="#007ACC" CornerRadius="12" Padding="10,4" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding SecurityBadgeText}" FontSize="10" FontWeight="Bold" Foreground="White" />
-                        </Border>
-                    </Grid>
-                </Border>
-
-                <!-- ================= ADVANCED PROTECTION (INDEPENDENT EXTENSION) CARD ================= -->
-                <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
-                    <Grid ColumnDefinitions="Auto,*,Auto">
-                        <TextBlock Grid.Column="0" Text="🛡️" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                            <TextBlock Text="{Binding AdvancedProtectionTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
-                            <TextBlock Text="{Binding AdvancedProtectionSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding AdvancedProtectionStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding AdvancedProtectionStatusColor}" Margin="0,1,0,0" />
-                        </StackPanel>
-                        <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsAdvancedProtectionEnabled}"
-                                      VerticalAlignment="Center" Margin="10,0,0,0" />
-                    </Grid>
-                </Border>
-
-                <!-- ================= PRIVACY CONTROLS (UNIFIED, CAMERA, MICROPHONE) GROUP CARD ================= -->
-                <Border Classes="card" BorderThickness="1" BorderBrush="#35353A">
-                    <StackPanel>
-                        <!-- Row 1: Unified Control -->
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Grid.Column="0" Text="🔗" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="{Binding UnifiedTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
-                                <TextBlock Text="{Binding UnifiedSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding BothStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding BothStatusColor}" Margin="0,1,0,0" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsBothBlocked}"
-                                          VerticalAlignment="Center" Margin="10,0,0,0" />
-                        </Grid>
-
-                        <Border Height="1" Background="#333338" Margin="0,8" />
-
-                        <!-- Row 2: Camera -->
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Grid.Column="0" Text="📷" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="{Binding CameraTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
-                                <TextBlock Text="{Binding CameraSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding CameraStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding CameraStatusColor}" Margin="0,1,0,0" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsCameraBlocked}"
-                                          VerticalAlignment="Center" Margin="10,0,0,0" />
-                        </Grid>
-
-                        <Border Height="1" Background="#333338" Margin="0,8" />
-
-                        <!-- Row 3: Microphone -->
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Grid.Column="0" Text="🎙️" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                <TextBlock Text="{Binding MicrophoneTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
-                                <TextBlock Text="{Binding MicrophoneSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding MicStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding MicStatusColor}" Margin="0,1,0,0" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsMicBlocked}"
-                                          VerticalAlignment="Center" Margin="10,0,0,0" />
-                        </Grid>
+            <!-- Platform Diagnostics & Badge Banner -->
+            <Border Background="#1F1F22" CornerRadius="8" Padding="12,8" BorderThickness="1" BorderBrush="#2C2C30">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock Text="{Binding PlatformName}" FontSize="11" Foreground="#888888" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding CapabilitiesSummary}" FontSize="11" Foreground="#007ACC" />
                     </StackPanel>
-                </Border>
+                    <Border Grid.Column="1" Background="#007ACC" CornerRadius="12" Padding="10,4" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding SecurityBadgeText}" FontSize="10" FontWeight="Bold" Foreground="White" />
+                    </Border>
+                </Grid>
+            </Border>
+        </StackPanel>
 
-                <!-- ================= DETECTED DEVICES LIST ================= -->
-                <TextBlock Text="{Binding DetectedDevicesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="#888888" Margin="4,4,0,2" />
-                <Border Background="#1C1C1E" CornerRadius="8" Padding="8" BorderThickness="1" BorderBrush="#2A2A2E">
+        <!-- 3. Advanced Protection Card -->
+        <Border Grid.Row="2" Margin="16,8,16,0" Classes="card" BorderThickness="1" BorderBrush="#35353A">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0" Text="🛡️" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="{Binding AdvancedProtectionTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                    <TextBlock Text="{Binding AdvancedProtectionSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding AdvancedProtectionStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding AdvancedProtectionStatusColor}" Margin="0,1,0,0" />
+                </StackPanel>
+                <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsAdvancedProtectionEnabled}"
+                              VerticalAlignment="Center" Margin="10,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- 4. Privacy Controls Group Card -->
+        <Border Grid.Row="3" Margin="16,8,16,0" Classes="card" BorderThickness="1" BorderBrush="#35353A">
+            <StackPanel>
+                <!-- Row 1: Unified Control -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Column="0" Text="🔗" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="{Binding UnifiedTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                        <TextBlock Text="{Binding UnifiedSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding BothStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding BothStatusColor}" Margin="0,1,0,0" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsBothBlocked}"
+                                  VerticalAlignment="Center" Margin="10,0,0,0" />
+                </Grid>
+
+                <Border Height="1" Background="#333338" Margin="0,6" />
+
+                <!-- Row 2: Camera -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Column="0" Text="📷" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="{Binding CameraTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                        <TextBlock Text="{Binding CameraSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding CameraStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding CameraStatusColor}" Margin="0,1,0,0" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsCameraBlocked}"
+                                  VerticalAlignment="Center" Margin="10,0,0,0" />
+                </Grid>
+
+                <Border Height="1" Background="#333338" Margin="0,6" />
+
+                <!-- Row 3: Microphone -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Column="0" Text="🎙️" FontSize="18" Width="26" TextAlignment="Center" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="{Binding MicrophoneTitle}" FontSize="13" FontWeight="Bold" Foreground="White" />
+                        <TextBlock Text="{Binding MicrophoneSubtitle}" FontSize="11" Foreground="#888888" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding MicStatusText}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding MicStatusColor}" Margin="0,1,0,0" />
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="2" IsChecked="{Binding IsMicBlocked}"
+                                  VerticalAlignment="Center" Margin="10,0,0,0" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 5. Detected Hardware Devices Section -->
+        <StackPanel Grid.Row="4" Margin="16,8,16,8" Spacing="4">
+            <TextBlock Text="{Binding DetectedDevicesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="#888888" Margin="4,0,0,0" />
+            <Border Background="#1C1C1E" CornerRadius="8" Padding="6" BorderThickness="1" BorderBrush="#2A2A2E">
+                <ScrollViewer MaxHeight="86" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <ItemsControl ItemsSource="{Binding Devices}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="vm:DeviceItemViewModel">
-                                <Border Padding="8,6" Margin="0,2" Background="#242427" CornerRadius="6">
+                                <Border Padding="8,4" Margin="0,1" Background="#242427" CornerRadius="6">
                                     <Grid ColumnDefinitions="*,Auto">
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="11" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Text="{Binding Id}" FontSize="10" Foreground="#777777" TextTrimming="CharacterEllipsis" Margin="0,1,0,0" />
                                         </StackPanel>
                                         <Border Grid.Column="1" Background="{Binding StatusColor}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" Margin="6,0,0,0">
@@ -159,13 +160,12 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                </Border>
+                </ScrollViewer>
+            </Border>
+        </StackPanel>
 
-            </StackPanel>
-        </ScrollViewer>
-
-        <!-- 3. Footer: Settings & Language Selector -->
-        <Border Grid.Row="2" Background="#141416" Padding="16,10" BorderThickness="0,1,0,0" BorderBrush="#252528">
+        <!-- 6. Footer: Settings & Language Selector -->
+        <Border Grid.Row="5" Background="#141416" Padding="16,10" BorderThickness="0,1,0,0" BorderBrush="#252528">
             <Grid ColumnDefinitions="*,Auto">
                 <!-- Autostart Checkbox -->
                 <CheckBox Grid.Column="0" IsChecked="{Binding IsAutostartEnabled}"
