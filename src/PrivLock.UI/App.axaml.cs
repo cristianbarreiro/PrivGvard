@@ -5,7 +5,9 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using PrivLock.Application.Services;
+using PrivLock.Infrastructure.Common.Logging;
 using PrivLock.UI.ViewModels;
 using PrivLock.UI.Views;
 using Serilog;
@@ -43,6 +45,18 @@ public partial class App : Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            Dispatcher.UIThread.UnhandledException += (_, e) =>
+            {
+                var reportPath = CrashReporter.GenerateCrashReport(
+                    e.Exception,
+                    "Dispatcher.UnhandledException",
+                    _shutdownCoordinator?.GetDiagnosticSummary());
+                Log.Fatal(e.Exception, "Unhandled UI dispatcher exception. Crash report: {ReportPath}", reportPath);
+                // Do not pretend the process can always recover in-place. Let the exception escape
+                // to Program.Main; its centralized fallback will attempt restoration.
+                e.Handled = false;
+            };
+
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             var mainWindow = new MainWindow

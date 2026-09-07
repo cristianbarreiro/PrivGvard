@@ -137,17 +137,6 @@ public static class Program
                 }
             }
 
-            Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, e) =>
-            {
-                var reportPath = CrashReporter.GenerateCrashReport(
-                    e.Exception,
-                    "Dispatcher.UnhandledException",
-                    _shutdownCoordinator?.GetDiagnosticSummary());
-                Log.Fatal(e.Exception, "Unhandled UI dispatcher exception. Crash report: {ReportPath}", reportPath);
-                // Do not pretend the process can always recover in-place. Let the exception escape
-                // to Program.Main; its centralized fallback will attempt restoration.
-                e.Handled = false;
-            };
 
             // 6. Recover a previous unfinished session before creating ViewModels or accepting actions.
             var recoveryService = serviceProvider.GetRequiredService<PrivacyRecoveryService>();
