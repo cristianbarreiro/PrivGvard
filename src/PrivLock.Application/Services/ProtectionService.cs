@@ -714,13 +714,13 @@ public sealed class ProtectionService
         CancellationToken cancellationToken)
     {
         if (IsShutdownStarted)
-            return OperationResult.Fail("PrivLock is shutting down; new protection changes are not accepted.");
+            return OperationResult.Fail("PrivGvard is shutting down; new protection changes are not accepted.");
 
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (IsShutdownStarted)
-                return OperationResult.Fail("PrivLock is shutting down; new protection changes are not accepted.");
+                return OperationResult.Fail("PrivGvard is shutting down; new protection changes are not accepted.");
             // The whole serialized operation must be independent of a UI synchronization context.
             // Shutdown/logout is then free to return control to the dispatcher while this operation
             // reaches its durable checkpoint and releases the gate.

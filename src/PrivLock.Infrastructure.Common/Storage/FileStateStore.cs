@@ -23,9 +23,7 @@ public sealed class FileStateStore : IStateStore
 
     public FileStateStore(string? customDirectory = null)
     {
-        var appDataDir = customDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PrivLock");
+        var appDataDir = customDirectory ?? StorageMigrationHelper.GetDefaultDataDirectory();
 
         Directory.CreateDirectory(appDataDir);
         _filePath = Path.Combine(appDataDir, "state.json");

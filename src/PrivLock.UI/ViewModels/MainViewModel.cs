@@ -18,7 +18,7 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isUpdating;
 
     [ObservableProperty]
-    private string _appTitle = "PrivLock";
+    private string _appTitle = "PrivGvard";
 
     [ObservableProperty]
     private string _appSubtitle = "Camera & Microphone Blocker";

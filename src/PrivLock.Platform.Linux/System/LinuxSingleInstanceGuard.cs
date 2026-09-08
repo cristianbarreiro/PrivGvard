@@ -17,10 +17,10 @@ public sealed class LinuxSingleInstanceGuard : ISingleInstanceGuard
     {
         var appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PrivLock");
+            "PrivGvard");
 
         Directory.CreateDirectory(appData);
-        _lockFilePath = Path.Combine(appData, "privlock.lock");
+        _lockFilePath = Path.Combine(appData, "privgvard.lock");
     }
 
     public bool TryAcquireSingleInstance()
@@ -33,7 +33,7 @@ public sealed class LinuxSingleInstanceGuard : ISingleInstanceGuard
         }
         catch (IOException)
         {
-            Log.Information("Another instance of PrivLock is already running on Linux.");
+            Log.Information("Another instance of PrivGvard is already running on Linux.");
             _hasAcquired = false;
             return false;
         }

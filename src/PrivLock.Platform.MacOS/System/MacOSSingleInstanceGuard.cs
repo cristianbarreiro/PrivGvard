@@ -17,10 +17,10 @@ public sealed class MacOSSingleInstanceGuard : ISingleInstanceGuard
     {
         var appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "Library", "Application Support", "PrivLock");
+            "Library", "Application Support", "PrivGvard");
 
         Directory.CreateDirectory(appData);
-        _lockFilePath = Path.Combine(appData, "privlock.lock");
+        _lockFilePath = Path.Combine(appData, "privgvard.lock");
     }
 
     public bool TryAcquireSingleInstance()
@@ -33,7 +33,7 @@ public sealed class MacOSSingleInstanceGuard : ISingleInstanceGuard
         }
         catch (IOException)
         {
-            Log.Information("Another instance of PrivLock is already running on macOS.");
+            Log.Information("Another instance of PrivGvard is already running on macOS.");
             _hasAcquired = false;
             return false;
         }

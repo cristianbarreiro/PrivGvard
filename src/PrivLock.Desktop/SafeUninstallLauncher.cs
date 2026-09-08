@@ -15,7 +15,8 @@ internal static class SafeUninstallLauncher
     internal const string QuietSwitch = "--quiet";
     internal const string HandoffArgumentPrefix = "/PRIVLOCK_HANDOFF=";
     internal const string HandoffEventPrefix = @"Global\PrivLock_UninstallReady_";
-    internal const string ExpectedApplicationFileName = "PrivLock.exe";
+    internal const string ExpectedApplicationFileName = "PrivGvard.exe";
+    internal const string LegacyExpectedApplicationFileName = "PrivLock.exe";
     internal const string ExpectedUninstallerFileName = "unins000.exe";
     private static readonly TimeSpan AdmissionTimeout = TimeSpan.FromSeconds(30);
 
@@ -38,7 +39,7 @@ internal static class SafeUninstallLauncher
             var principal = new WindowsPrincipal(identity);
             if (principal.IsInRole(WindowsBuiltInRole.Administrator))
             {
-                error = "PrivLock must start under an unelevated user token.";
+                error = "PrivGvard must start under an unelevated user token.";
                 return false;
             }
 
@@ -88,10 +89,9 @@ internal static class SafeUninstallLauncher
             return false;
         }
 
-        if (!string.Equals(
-                Path.GetFileName(applicationPath),
-                ExpectedApplicationFileName,
-                StringComparison.OrdinalIgnoreCase) ||
+        var appFileName = Path.GetFileName(applicationPath);
+        if ((!string.Equals(appFileName, ExpectedApplicationFileName, StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(appFileName, LegacyExpectedApplicationFileName, StringComparison.OrdinalIgnoreCase)) ||
             !string.Equals(
                 Path.GetFileName(uninstallerPath),
                 ExpectedUninstallerFileName,
@@ -107,7 +107,7 @@ internal static class SafeUninstallLauncher
             !string.Equals(applicationDirectory, uninstallerDirectory, StringComparison.OrdinalIgnoreCase) ||
             !IsStrictDescendant(applicationDirectory, trustedRoot))
         {
-            error = "The uninstaller is not in the trusted PrivLock installation directory.";
+            error = "The uninstaller is not in the trusted PrivGvard installation directory.";
             return false;
         }
 
@@ -182,22 +182,22 @@ internal static class SafeUninstallLauncher
                 out var createdNew);
             if (!createdNew)
             {
-                error = "Could not create a unique PrivLock uninstall handoff event.";
+                error = "Could not create a unique PrivGvard uninstall handoff event.";
                 return false;
             }
 
             // The main single-instance mutex remains owned until Inno confirms that it owns the
-            // uninstall gate. No new PrivLock process can enter the gap between these two owners.
+            // uninstall gate. No new PrivGvard process can enter the gap between these two owners.
             if (!releaseUninstallGate())
             {
-                error = "Could not release the PrivLock uninstall gate for handoff.";
+                error = "Could not release the PrivGvard uninstall gate for handoff.";
                 return false;
             }
 
             using var process = Process.Start(CreateStartInfo(plan, handoffToken));
             if (process == null)
             {
-                error = "Windows did not start the PrivLock uninstaller.";
+                error = "Windows did not start the PrivGvard uninstaller.";
                 return false;
             }
 
@@ -208,12 +208,12 @@ internal static class SafeUninstallLauncher
                     return true;
                 if (process.HasExited)
                 {
-                    error = $"The PrivLock uninstaller exited before safe admission (code {process.ExitCode}).";
+                    error = $"The PrivGvard uninstaller exited before safe admission (code {process.ExitCode}).";
                     return false;
                 }
             }
 
-            error = "Timed out waiting for the PrivLock uninstaller safety admission.";
+            error = "Timed out waiting for the PrivGvard uninstaller safety admission.";
             return false;
         }
         catch (global::System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
@@ -223,7 +223,7 @@ internal static class SafeUninstallLauncher
         }
         catch (Exception ex)
         {
-            error = $"The PrivLock uninstaller could not be started ({ex.GetType().Name}).";
+            error = $"The PrivGvard uninstaller could not be started ({ex.GetType().Name}).";
             return false;
         }
     }

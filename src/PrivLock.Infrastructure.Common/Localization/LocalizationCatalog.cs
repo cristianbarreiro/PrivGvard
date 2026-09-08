@@ -8,7 +8,7 @@ public static class LocalizationCatalog
 {
     public static readonly IReadOnlyDictionary<string, string> StringsEs = new Dictionary<string, string>
     {
-        ["AppTitle"] = "PrivLock",
+        ["AppTitle"] = "PrivGvard",
         ["AppSubtitle"] = "Bloqueador de Cámara y Micrófono",
 
         // Sections
@@ -129,7 +129,7 @@ public static class LocalizationCatalog
 
     public static readonly IReadOnlyDictionary<string, string> StringsEn = new Dictionary<string, string>
     {
-        ["AppTitle"] = "PrivLock",
+        ["AppTitle"] = "PrivGvard",
         ["AppSubtitle"] = "Camera & Microphone Blocker",
 
         // Sections

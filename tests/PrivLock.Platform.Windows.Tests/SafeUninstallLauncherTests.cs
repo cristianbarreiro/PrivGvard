@@ -49,6 +49,27 @@ public sealed class SafeUninstallLauncherTests : IDisposable
     }
 
     [Fact]
+    public void ValidRequest_AcceptsLegacyApplicationFileName()
+    {
+        var legacyAppPath = Path.Combine(
+            _installDirectory,
+            SafeUninstallLauncher.LegacyExpectedApplicationFileName);
+        File.WriteAllBytes(legacyAppPath, [0x4D, 0x5A]);
+
+        var args = new[] { SafeUninstallLauncher.Command, _uninstallerPath };
+
+        var valid = SafeUninstallLauncher.TryCreatePlan(
+            args,
+            legacyAppPath,
+            _trustedRoot,
+            out var plan,
+            out var error);
+
+        Assert.True(valid, error);
+        Assert.NotNull(plan);
+    }
+
+    [Fact]
     public void QuietRequest_AddsOnlyFixedInnoQuietArguments()
     {
         var args = new[]

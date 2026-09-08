@@ -17,7 +17,7 @@ public sealed class MacOSAutostartProvider : IAutostartProvider
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var launchAgentsDir = Path.Combine(home, "Library", "LaunchAgents");
-        _plistFilePath = Path.Combine(launchAgentsDir, "com.cdevstudio.privlock.plist");
+        _plistFilePath = Path.Combine(launchAgentsDir, "com.cdevstudio.privgvard.plist");
     }
 
     public bool IsAutostartEnabled()
@@ -47,7 +47,7 @@ public sealed class MacOSAutostartProvider : IAutostartProvider
                 <plist version="1.0">
                 <dict>
                     <key>Label</key>
-                    <string>com.cdevstudio.privlock</string>
+                    <string>com.cdevstudio.privgvard</string>
                     <key>ProgramArguments</key>
                     <array>
                         <string>{exePath}</string>

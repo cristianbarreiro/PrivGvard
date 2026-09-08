@@ -13,14 +13,15 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
     private static readonly ILogger Log = Serilog.Log.ForContext<WindowsAutostartProvider>();
 
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "PrivLock";
+    private const string AppName = "PrivGvard";
+    private const string LegacyAppName = "PrivLock";
 
     public bool IsAutostartEnabled()
     {
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            var value = key?.GetValue(AppName);
+            var value = key?.GetValue(AppName) ?? key?.GetValue(LegacyAppName);
             return value != null;
         }
         catch (Exception ex)
@@ -51,6 +52,17 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
             }
 
             key.SetValue(AppName, $"\"{exePath}\" --minimized");
+
+            // Clean up any legacy PrivLock startup entry to avoid duplicate executions
+            try
+            {
+                key.DeleteValue(LegacyAppName, throwOnMissingValue: false);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "Legacy startup key cleanup skipped");
+            }
+
             Log.Information("Windows startup enabled: {Path}", exePath);
             return OperationResult.Ok();
         }
@@ -66,7 +78,11 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
         try
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
-            key?.DeleteValue(AppName, throwOnMissingValue: false);
+            if (key != null)
+            {
+                key.DeleteValue(AppName, throwOnMissingValue: false);
+                key.DeleteValue(LegacyAppName, throwOnMissingValue: false);
+            }
             Log.Information("Windows startup disabled");
             return OperationResult.Ok();
         }

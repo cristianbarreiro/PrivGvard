@@ -37,7 +37,7 @@ public static class Program
             !SafeUninstallLauncher.TryConfirmStandardUserToken(out var elevationError))
         {
             System.Diagnostics.Trace.TraceError(
-                "Rejected elevated PrivLock user process: {0}",
+                "Rejected elevated PrivGvard user process: {0}",
                 elevationError ?? "token verification failed");
             return 1;
         }
@@ -60,7 +60,7 @@ public static class Program
 
         // 2. Initialize standard logging
         LoggingConfiguration.Initialize();
-        Log.Information("=== PrivLock Desktop Starting ===");
+        Log.Information("=== PrivGvard Desktop Starting ===");
 
         // 3. Global exception handlers
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
@@ -118,7 +118,7 @@ public static class Program
             singleInstanceGuard = serviceProvider.GetRequiredService<ISingleInstanceGuard>();
             if (!singleInstanceGuard.TryAcquireSingleInstance())
             {
-                Log.Warning("Another instance of PrivLock is already running. Exiting without changing system state.");
+                Log.Warning("Another instance of PrivGvard is already running. Exiting without changing system state.");
                 Log.CloseAndFlush();
                 return 2;
             }
@@ -228,7 +228,7 @@ public static class Program
                 Platform.Windows.Privileged.WindowsPrivilegedSession.Instance.CloseSession();
             }
             Log.Information(
-                "=== PrivLock Exited (Code: {Code}, RestoreSafe={RestoreSafe}) ===",
+                "=== PrivGvard Exited (Code: {Code}, RestoreSafe={RestoreSafe}) ===",
                 exitCode,
                 finalRestore?.SafeToExit == true);
             _shutdownCoordinator = null;
@@ -406,7 +406,7 @@ public static class Program
         if (string.IsNullOrWhiteSpace(userProfile) || !Path.IsPathFullyQualified(userProfile))
             throw new InvalidOperationException("Windows did not provide a canonical current-user profile path.");
 
-        return Path.Combine(userProfile, "AppData", "Local", "PrivLock", "Recovery");
+        return Path.Combine(userProfile, "AppData", "Local", "PrivGvard", "Recovery");
     }
 
 }

@@ -17,7 +17,7 @@ public sealed class LinuxAutostartProvider : IAutostartProvider
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var autostartDir = Path.Combine(home, ".config", "autostart");
-        _desktopFilePath = Path.Combine(autostartDir, "privlock.desktop");
+        _desktopFilePath = Path.Combine(autostartDir, "privgvard.desktop");
     }
 
     public bool IsAutostartEnabled()
@@ -44,10 +44,10 @@ public sealed class LinuxAutostartProvider : IAutostartProvider
             var desktopEntry = $"""
                 [Desktop Entry]
                 Type=Application
-                Name=PrivLock
-                Comment=Camera & Microphone Blocker
+                Name=PrivGvard
+                Comment=Camera & Microphone Privacy Guard
                 Exec="{exePath}" --minimized
-                Icon=privlock
+                Icon=privgvard
                 Terminal=false
                 Categories=Utility;Security;
                 X-GNOME-Autostart-enabled=true

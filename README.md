@@ -13,7 +13,7 @@
 
 **PrivGvard** is intended to be a native, transparent privacy utility for **Windows**, **Linux**, and **macOS** (C# / .NET 10 and Avalonia UI). The current verified implementation is Windows-first: it focuses on exact state capture, on-demand authorization, effective-state verification and journaled recovery. Linux and macOS remain discovery/UI scaffolds until their native recovery adapters are complete.
 
-The active code still uses the historical names `PrivLock` and `CamMicBlocker`. This README uses the desired product name `PrivGvard`; a full branding migration is intentionally a separate task.
+The product name is **PrivGvard** (executable: `PrivGvard.exe`, storage: `%LOCALAPPDATA%\PrivGvard`). The internal C# namespaces and solution retain historical identifiers for architectural stability and seamless upgrade compatibility with previous versions.
 
 PrivGvard follows the **Principle of Least Privilege**: it runs as **one single application** with standard user permissions by default, elevating privileges **only on-demand** for an explicitly authorized operation.
 
@@ -97,12 +97,12 @@ PrivLock/
 
 ### 1. Clone & Build Solution
 ```powershell
-git clone https://github.com/cristianbarreiro/PrivLock.git
-cd PrivLock
+git clone https://github.com/cristianbarreiro/PrivGvard.git
+cd PrivGvard
 dotnet build CamMicBlocker.sln
 ```
 
-### 2. Run Test Suite (156 tests in the current local baseline)
+### 2. Run Test Suite (171 tests in the current local baseline)
 ```powershell
 dotnet test CamMicBlocker.sln
 ```
@@ -131,10 +131,10 @@ dotnet publish src/PrivLock.Desktop/PrivLock.Desktop.csproj -c Release -r osx-ar
 
 - **Least Privilege Architecture**: Runs with standard user permissions by default (`asInvoker`), elevating privileges transiently only during an authorized Windows operation.
 - **Structured Diagnostic Logs**:
-  - Windows: `%LOCALAPPDATA%\PrivLock\Logs\PrivLock-yyyyMMdd.log`
-  - Linux: `~/.local/share/PrivLock/Logs/PrivLock-yyyyMMdd.log`
-  - macOS: `~/Library/Application Support/PrivLock/Logs/PrivLock-yyyyMMdd.log`
-- **Post-Mortem Crash Reports**: Structured JSON reports generated in `.../PrivLock/CrashReports/` on unhandled exceptions.
+  - Windows: `%LOCALAPPDATA%\PrivGvard\Logs\PrivGvard-yyyyMMdd.log` (automatically migrates legacy `%LOCALAPPDATA%\PrivLock`)
+  - Linux: `~/.local/share/PrivGvard/Logs/privgvard-yyyyMMdd.log`
+  - macOS: `~/Library/Application Support/PrivGvard/Logs/privgvard-yyyyMMdd.log`
+- **Post-Mortem Crash Reports**: Structured JSON reports generated in `.../PrivGvard/CrashReports/` on unhandled exceptions.
 - **Fail-Secure Architecture**: The application must not report a device as protected without a fresh effective-state observation. Windows has the current recovery-backed path; Linux/macOS remain unsupported for production privacy mutation.
 
 For the full audit, capability matrix and staged roadmap, see [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md) and [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md).
@@ -143,11 +143,11 @@ For the full audit, capability matrix and staged roadmap, see [docs/ai/PROJECT_C
 
 ## 📄 License
 
-PrivGvard (current code identity: PrivLock) is free and open-source software released under the **GNU General Public License v3.0 (GPL-3.0)**.
+PrivGvard is free and open-source software released under the **GNU General Public License v3.0 (GPL-3.0)**.
 
 ```text
 Copyright (C) 2026 Cristian Barreiro
-Repository: https://github.com/cristianbarreiro/PrivLock.git
+Repository: https://github.com/cristianbarreiro/PrivGvard.git
 ```
 
 For complete license terms, legal notices, and third-party dependency disclosures, see [LICENSE](LICENSE) and [COPYRIGHT](COPYRIGHT).

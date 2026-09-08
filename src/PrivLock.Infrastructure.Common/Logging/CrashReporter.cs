@@ -33,7 +33,7 @@ public static class CrashReporter
         if (Volatile.Read(ref _fileOutputSuppressed) != 0)
         {
             Trace.TraceError(
-                "PrivLock crash report suppressed in restricted process. Context={0}, Exception={1}",
+                "PrivGvard crash report suppressed in restricted process. Context={0}, Exception={1}",
                 sourceContext,
                 exception.GetType().FullName);
             return string.Empty;
@@ -45,7 +45,7 @@ public static class CrashReporter
             {
                 var crashDir = customCrashDir ?? Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "PrivLock", "CrashReports");
+                    "PrivGvard", "CrashReports");
 
                 Directory.CreateDirectory(crashDir);
 

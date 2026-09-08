@@ -133,7 +133,7 @@ public partial class App : Avalonia.Application
 
             var nativeMenu = new NativeMenu();
 
-            var openItem = new NativeMenuItem("Abrir / Open PrivLock");
+            var openItem = new NativeMenuItem("Abrir / Open PrivGvard");
             openItem.Click += (_, _) => ShowMainWindow();
 
             var exitItem = new NativeMenuItem("Salir / Exit");
@@ -146,7 +146,7 @@ public partial class App : Avalonia.Application
 
             _trayIcon = new TrayIcon
             {
-                ToolTipText = "PrivLock - Camera & Microphone Blocker",
+                ToolTipText = "PrivGvard - Camera & Microphone Blocker",
                 IsVisible = true,
                 Menu = nativeMenu
             };
@@ -226,7 +226,7 @@ public partial class App : Avalonia.Application
                 _shutdownCoordinator.AbortShutdownAfterFailedUserExit();
                 _shutdownInProgress = false;
                 _mainViewModel?.ReportExternalError(
-                    recovery.ErrorMessage ?? "PrivLock could not safely restore every owned change. Exit was cancelled.");
+                    recovery.ErrorMessage ?? "PrivGvard could not safely restore every owned change. Exit was cancelled.");
                 ShowMainWindow();
                 return;
             }

@@ -1,12 +1,12 @@
 ; =====================================================================
-; PrivLock - Inno Setup Script
+; PrivGvard - Inno Setup Script
 ; Professional Windows Desktop Installer. The installed app itself remains asInvoker.
 ; =====================================================================
 
-#define MyAppName "PrivLock"
+#define MyAppName "PrivGvard"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "PrivLock"
-#define MyAppExeName "PrivLock.exe"
+#define MyAppPublisher "cdev Studio"
+#define MyAppExeName "PrivGvard.exe"
 #define MyAppId "{{8E0F7A12-BFB3-4FE8-B9A5-48FD50A15A9A}"
 #define MyAppUninstallKey "Software\Microsoft\Windows\CurrentVersion\Uninstall\{8E0F7A12-BFB3-4FE8-B9A5-48FD50A15A9A}_is1"
 #define UninstallGateMutex "Global\PrivLock_UninstallGate"
@@ -14,7 +14,8 @@
 #define HandoffEventPrefix "Global\PrivLock_UninstallReady_"
 #define OwnershipRegistryKey "SOFTWARE\PrivLock\PrivilegedOwnership\v2"
 #define ProfileListRegistryKey "SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList"
-#define RecoveryRelativePath "AppData\Local\PrivLock\Recovery\"
+#define RecoveryRelativePath "AppData\Local\PrivGvard\Recovery\"
+#define LegacyRecoveryRelativePath "AppData\Local\PrivLock\Recovery\"
 #define ActiveMarkerFile "active-session-v1.marker"
 #define JournalFile "privacy-session-v1.json"
 
@@ -25,10 +26,11 @@ AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
+UsePreviousAppDir=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
-OutputBaseFilename=PrivLock-Setup-1.0.0
+OutputBaseFilename=PrivGvard-Setup-1.0.0
 SetupIconFile=..\src\PrivLock.Desktop\Assets\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallFilesDir={app}
@@ -39,12 +41,8 @@ DisableProgramGroupPage=yes
 
 ; Ensure running instances are safely closed before installing/updating/uninstalling
 CloseApplications=no
-CloseApplicationsFilter={#MyAppExeName}
+CloseApplicationsFilter={#MyAppExeName},PrivLock.exe
 RestartApplications=no
-
-[Languages]
-Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
-Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -375,13 +373,13 @@ begin
   begin
     ErrorCode := GetLastError;
     Result := (ErrorCode = ERROR_FILE_NOT_FOUND) or (ErrorCode = ERROR_PATH_NOT_FOUND);
-    if not Result then Log('PrivLock cannot inspect recovery path: ' + Path);
+    if not Result then Log('PrivGvard cannot inspect recovery path: ' + Path);
     exit;
   end;
   Exists := True;
   Result := ((Attributes and PRIVLOCK_ATTRIBUTE_REPARSE_POINT) = 0) and
     (((Attributes and PRIVLOCK_ATTRIBUTE_DIRECTORY) <> 0) = IsDirectory);
-  if not Result then Log('PrivLock rejected a redirected or invalid recovery path: ' + Path);
+  if not Result then Log('PrivGvard rejected a redirected or invalid recovery path: ' + Path);
 end;
 
 function JournalMayBeActive(const JournalPath: String): Boolean;
@@ -405,7 +403,7 @@ begin
   if (Size <= 0) or (Size > MaximumJournalBytes) then exit;
   if not LoadStringFromFile(JournalPath, Contents) then
   begin
-    Log('PrivLock uninstall cannot read recovery journal: ' + JournalPath);
+    Log('PrivGvard uninstall cannot read recovery journal: ' + JournalPath);
     exit;
   end;
   if (Length(Contents) <= 0) or (Length(Contents) > MaximumJournalBytes) then exit;
@@ -422,7 +420,7 @@ begin
   Result := StartsText('S-1-5-21-', Sid) or StartsText('S-1-12-1-', Sid);
 end;
 
-function ProfileMayHaveActiveSession(const ProfilePath: String): Boolean;
+function ProfilePathMayHaveActiveSessionInDir(const ProfilePath, RelativeDir: String): Boolean;
 var
   RecoveryPath: String;
   PrimaryJournal: String;
@@ -433,7 +431,7 @@ begin
   Result := True;
   // The marker uses the conventional profile path even when LocalAppData is redirected.
   // Reject unknown/redirected ancestors before considering any missing child authoritative.
-  RecoveryPath := AddBackslash(ProfilePath) + '{#RecoveryRelativePath}';
+  RecoveryPath := AddBackslash(ProfilePath) + RelativeDir;
   for Index := 4 to Length(RecoveryPath) do
   begin
     if RecoveryPath[Index] = '\' then
@@ -456,6 +454,12 @@ begin
   Result := JournalMayBeActive(PrimaryJournal) or JournalMayBeActive(PrimaryJournal + '.bak');
 end;
 
+function ProfileMayHaveActiveSession(const ProfilePath: String): Boolean;
+begin
+  Result := ProfilePathMayHaveActiveSessionInDir(ProfilePath, '{#RecoveryRelativePath}') or
+            ProfilePathMayHaveActiveSessionInDir(ProfilePath, '{#LegacyRecoveryRelativePath}');
+end;
+
 function AnyProfileMayHaveActiveSession: Boolean;
 var
   ProfileSids: TArrayOfString;
@@ -467,7 +471,7 @@ begin
   Result := True;
   if not RegGetSubkeyNames(HKLM64, '{#ProfileListRegistryKey}', ProfileSids) then
   begin
-    Log('PrivLock uninstall cannot enumerate Windows profiles.');
+    Log('PrivGvard uninstall cannot enumerate Windows profiles.');
     exit;
   end;
 
@@ -481,7 +485,7 @@ begin
           'ProfileImagePath',
           ProfilePath) then
       begin
-        Log('PrivLock uninstall cannot resolve profile ' + ProfileSids[Index] + '.');
+        Log('PrivGvard uninstall cannot resolve profile ' + ProfileSids[Index] + '.');
         exit;
       end;
 
@@ -495,12 +499,12 @@ begin
          (Pos('%', ProfilePath) > 0) or (Pos('/', ProfilePath) > 0) or
          (Pos('\..', ProfilePath) > 0) or (Pos('\.', ProfilePath) > 0) then
       begin
-        Log('PrivLock uninstall rejected an unresolved Windows profile path.');
+        Log('PrivGvard uninstall rejected an unresolved Windows profile path.');
         exit;
       end;
       if ProfileMayHaveActiveSession(ProfilePath) then
       begin
-        Log('PrivLock uninstall found active recovery state for profile ' + ProfileSids[Index] + '.');
+        Log('PrivGvard uninstall found active recovery state for profile ' + ProfileSids[Index] + '.');
         exit;
       end;
     end;
@@ -525,7 +529,7 @@ begin
   end;
   if OpenResult <> 0 then
   begin
-    Log('PrivLock uninstall cannot open privileged ownership claims.');
+    Log('PrivGvard uninstall cannot open privileged ownership claims.');
     exit;
   end;
   if RegCloseKey(KeyHandle) <> 0 then exit;
@@ -533,7 +537,7 @@ begin
   if not RegGetValueNames(HKLM64, '{#OwnershipRegistryKey}', ValueNames) or
      not RegGetSubkeyNames(HKLM64, '{#OwnershipRegistryKey}', SubkeyNames) then
   begin
-    Log('PrivLock uninstall cannot enumerate privileged ownership claims.');
+    Log('PrivGvard uninstall cannot enumerate privileged ownership claims.');
     Result := True;
     exit;
   end;
@@ -621,7 +625,17 @@ var
   UninstallerPath: String;
   UninstallCommand: String;
   QuietUninstallCommand: String;
+  LegacyDir: String;
 begin
+  if CurStep = ssInstall then
+  begin
+    // Clean up legacy shortcuts if upgrading from PrivLock
+    DeleteFile(ExpandConstant('{autoprograms}\PrivLock.lnk'));
+    DeleteFile(ExpandConstant('{autodesktop}\PrivLock.lnk'));
+    DeleteFile(ExpandConstant('{commonprograms}\PrivLock.lnk'));
+    DeleteFile(ExpandConstant('{commondesktop}\PrivLock.lnk'));
+  end;
+
   if CurStep = ssPostInstall then
   begin
     WrapperPath := ExpandConstant('{app}\{#MyAppExeName}');
@@ -631,11 +645,21 @@ begin
 
     if not RegWriteStringValue(HKLM64, '{#MyAppUninstallKey}',
       'UninstallString', UninstallCommand) then
-      RaiseException('Could not register the PrivLock safe uninstall wrapper.');
+      RaiseException('Could not register the PrivGvard safe uninstall wrapper.');
 
     if not RegWriteStringValue(HKLM64, '{#MyAppUninstallKey}',
       'QuietUninstallString', QuietUninstallCommand) then
-      RaiseException('Could not register the PrivLock quiet safe uninstall wrapper.');
+      RaiseException('Could not register the PrivGvard quiet safe uninstall wrapper.');
+
+    // If upgrading from legacy directory C:\Program Files\PrivLock, clean up old binaries if different from new {app}
+    LegacyDir := ExpandConstant('{autopf}\PrivLock');
+    if DirExists(LegacyDir) and (CompareText(LegacyDir, ExpandConstant('{app}')) <> 0) then
+    begin
+      DeleteFile(AddBackslash(LegacyDir) + 'PrivLock.exe');
+      DeleteFile(AddBackslash(LegacyDir) + 'unins000.exe');
+      DeleteFile(AddBackslash(LegacyDir) + 'unins000.dat');
+      RemoveDir(LegacyDir); // Only succeeds if folder is now empty
+    end;
   end;
 end;
 
@@ -646,14 +670,14 @@ begin
   Result := False;
   if not TryAcquireUninstallGate then
   begin
-    MsgBox('PrivLock is running or another uninstall is in progress. Exit PrivLock normally and try again.',
+    MsgBox('PrivGvard is running or another uninstall is in progress. Exit PrivGvard normally and try again.',
       mbCriticalError, MB_OK);
     exit;
   end;
 
   if AnyProfileMayHaveActiveSession or AnyPrivilegedOwnershipClaim then
   begin
-    MsgBox('PrivLock found privacy state that still requires recovery. Sign in to each affected account and start PrivLock before uninstalling.',
+    MsgBox('PrivGvard found privacy state that still requires recovery. Sign in to each affected account and start PrivGvard before uninstalling.',
       mbCriticalError, MB_OK);
     ReleaseUninstallGate;
     exit;
@@ -661,7 +685,7 @@ begin
 
   if not SignalWrapperAdmission then
   begin
-    MsgBox('PrivLock could not complete the secure uninstall handoff.', mbCriticalError, MB_OK);
+    MsgBox('PrivGvard could not complete the secure uninstall handoff.', mbCriticalError, MB_OK);
     ReleaseUninstallGate;
     exit;
   end;

@@ -3,7 +3,7 @@
         xmlns:vm="using:PrivLock.UI.ViewModels"
         x:Class="PrivLock.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Title="PrivLock"
+        Title="PrivGvard"
         Width="460"
         MinWidth="460"
         MaxWidth="460"

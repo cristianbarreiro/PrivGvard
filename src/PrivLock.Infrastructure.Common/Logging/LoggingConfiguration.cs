@@ -22,17 +22,17 @@ public static class LoggingConfiguration
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .MinimumLevel.Override("Avalonia", LogEventLevel.Warning)
             .Enrich.FromLogContext()
-            .Enrich.WithProperty("Application", "PrivLock")
+            .Enrich.WithProperty("Application", "PrivGvard")
             .Enrich.WithProperty("ProcessId", process.Id)
             .WriteTo.File(
-                path: Path.Combine(logDir, "PrivLock-.log"),
+                path: Path.Combine(logDir, "PrivGvard-.log"),
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 7,
                 fileSizeLimitBytes: 10 * 1024 * 1024,
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] [PID:{ProcessId}] [Thread:{ThreadId}] [{SourceContext}] {Message:lj}{Properties:j}{NewLine}{Exception}")
             .CreateLogger();
 
-        Log.Information("=== PrivLock Logging Initialized ===");
+        Log.Information("=== PrivGvard Logging Initialized ===");
         Log.Information("OS: {OS} ({Desc})", Environment.OSVersion, System.Runtime.InteropServices.RuntimeInformation.OSDescription);
         Log.Information("Arch: {Arch}", System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture);
         Log.Information("Process ID: {PID}", process.Id);
@@ -44,6 +44,6 @@ public static class LoggingConfiguration
     {
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PrivLock", "Logs");
+            "PrivGvard", "Logs");
     }
 }

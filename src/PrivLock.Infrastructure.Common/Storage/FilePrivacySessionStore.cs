@@ -57,8 +57,7 @@ public sealed class FilePrivacySessionStore : IPrivacySessionStore
     {
         ArgumentNullException.ThrowIfNull(activeSessionMarker);
         var recoveryDirectory = customDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PrivLock",
+            StorageMigrationHelper.GetDefaultDataDirectory(),
             "Recovery");
 
         Directory.CreateDirectory(recoveryDirectory);
@@ -143,7 +142,7 @@ public sealed class FilePrivacySessionStore : IPrivacySessionStore
                 catch (Exception ex) when (IsRecoverableStorageException(ex))
                 {
                     throw new PrivacySessionStoreException(
-                        "PrivLock could not complete both terminal recovery journal copies; the active-session marker was retained.",
+                        "PrivGvard could not complete both terminal recovery journal copies; the active-session marker was retained.",
                         ex);
                 }
 
@@ -227,7 +226,7 @@ public sealed class FilePrivacySessionStore : IPrivacySessionStore
             {
                 Log.Error(ex, "Failed to durably persist privacy recovery journal at {Path}", _filePath);
                 throw new PrivacySessionStoreException(
-                    "PrivLock could not persist its recovery journal; the operating-system state was not safe to change.",
+                    "PrivGvard could not persist its recovery journal; the operating-system state was not safe to change.",
                     ex);
             }
             finally
@@ -256,7 +255,7 @@ public sealed class FilePrivacySessionStore : IPrivacySessionStore
         catch (Exception ex) when (IsRecoverableStorageException(ex))
         {
             throw new PrivacySessionStoreException(
-                "PrivLock could not reconcile its machine-visible active-session marker.",
+                "PrivGvard could not reconcile its machine-visible active-session marker.",
                 ex);
         }
     }

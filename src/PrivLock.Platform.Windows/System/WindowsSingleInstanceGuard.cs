@@ -28,7 +28,7 @@ public sealed class WindowsSingleInstanceGuard : ISingleInstanceGuard
             _hasUninstallGate = TryAcquire(_uninstallGate);
             if (!_hasUninstallGate)
             {
-                Log.Information("PrivLock cannot start while the uninstall gate is owned.");
+                Log.Information("PrivGvard cannot start while the uninstall gate is owned.");
                 DisposeUnowned(ref _uninstallGate);
                 return false;
             }
@@ -38,7 +38,7 @@ public sealed class WindowsSingleInstanceGuard : ISingleInstanceGuard
 
             if (!_hasAcquired)
             {
-                Log.Information("Another instance of PrivLock is already running on Windows.");
+                Log.Information("Another instance of PrivGvard is already running on Windows.");
                 DisposeUnowned(ref _mutex);
                 ReleaseUninstallGateCore();
             }
