@@ -16,40 +16,51 @@
         ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="38">
 
+    <Window.Resources>
+        <FontFamily x:Key="ComfortaaFont">avares://PrivLock.UI/Assets/Fonts#Comfortaa, avares://PrivLock.UI/Assets/Fonts#Comfortaa SemiBold</FontFamily>
+    </Window.Resources>
+
     <Grid RowDefinitions="38,Auto,Auto,Auto,Auto">
         <!-- 1. Custom Integrated TitleBar -->
         <Border Grid.Row="0" Background="#1A1A1D" IsHitTestVisible="True" PointerPressed="OnTitleBarPointerPressed">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                <!-- Settings Dropdown, Logo & Title -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0" Spacing="6">
-                    <!-- Settings Dropdown Button -->
-                    <Button Background="Transparent" BorderThickness="0" Padding="6,4"
-                            VerticalAlignment="Center" Cursor="Hand" ToolTip.Tip="Menú y Ajustes">
-                        <TextBlock Text="⚙️" FontSize="13" Foreground="#AAAAAA" />
-                        <Button.Flyout>
-                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                                <MenuItem Header="⚙️  Ajustes" Command="{Binding OpenSettingsCommand}" CommandParameter="General" />
-                                <MenuItem Header="📖  Ayuda y Documentación" Command="{Binding OpenSettingsCommand}" CommandParameter="Help" />
-                                <MenuItem Header="🛡️  Diagnóstico del Sistema" Command="{Binding OpenSettingsCommand}" CommandParameter="Diagnostics" />
-                                <Separator />
-                                <MenuItem Header="ℹ️  Acerca de PrivGvard" Command="{Binding OpenSettingsCommand}" CommandParameter="About" />
-                            </MenuFlyout>
-                        </Button.Flyout>
+            <Grid>
+                <!-- Centered Title (Geometric Window Center) -->
+                <TextBlock Text="{Binding AppTitle}"
+                           FontFamily="{StaticResource ComfortaaFont}"
+                           FontWeight="SemiBold"
+                           FontSize="13"
+                           Foreground="White"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False" />
+
+                <!-- Left: Settings Dropdown Button -->
+                <Button HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Background="Transparent" BorderThickness="0" Padding="6,4"
+                        Margin="10,0,0,0" Cursor="Hand" ToolTip.Tip="Menú y Ajustes">
+                    <TextBlock Text="⚙️" FontSize="13" Foreground="#AAAAAA" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <MenuItem Header="⚙️  Ajustes" Command="{Binding OpenSettingsCommand}" CommandParameter="General" />
+                            <MenuItem Header="📖  Ayuda y Documentación" Command="{Binding OpenSettingsCommand}" CommandParameter="Help" />
+                            <MenuItem Header="🛡️  Diagnóstico del Sistema" Command="{Binding OpenSettingsCommand}" CommandParameter="Diagnostics" />
+                            <Separator />
+                            <MenuItem Header="ℹ️  Acerca de PrivGvard" Command="{Binding OpenSettingsCommand}" CommandParameter="About" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+
+                <!-- Right: Window Controls -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Width="44" Height="38" Background="Transparent" BorderThickness="0"
+                            Click="OnMinimizeClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                        <TextBlock Text="—" FontSize="11" Foreground="#AAAAAA" />
                     </Button>
-
-                    <TextBlock Text="🛡️" FontSize="14" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding AppTitle}" FontWeight="Bold" FontSize="13" Foreground="White" VerticalAlignment="Center" />
+                    <Button Width="44" Height="38" Background="Transparent" BorderThickness="0"
+                            Click="OnCloseClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                        <TextBlock Text="✕" FontSize="12" Foreground="#AAAAAA" />
+                    </Button>
                 </StackPanel>
-
-                <!-- Window Controls -->
-                <Button Grid.Column="2" Width="44" Height="38" Background="Transparent" BorderThickness="0"
-                        Click="OnMinimizeClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
-                    <TextBlock Text="—" FontSize="11" Foreground="#AAAAAA" />
-                </Button>
-                <Button Grid.Column="3" Width="44" Height="38" Background="Transparent" BorderThickness="0"
-                        Click="OnCloseClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
-                    <TextBlock Text="✕" FontSize="12" Foreground="#AAAAAA" />
-                </Button>
             </Grid>
         </Border>
 

@@ -66,7 +66,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private string _appName = "PrivGvard";
 
     [ObservableProperty]
-    private string _appVersion = "1.0.0";
+    private string _appVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "2.0.0";
 
     // --- Localized Titles & Labels ---
     public string WindowTitle => _localizationService.GetString("SettingsWindowTitle", "Configuración — PrivGvard");

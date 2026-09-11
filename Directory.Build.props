@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+    <InformationalVersion>2.0.0</InformationalVersion>
+    <Product>PrivGvard</Product>
+    <Company>cdev Studio</Company>
+    <Copyright>Copyright (C) 2026 cdev Studio. All rights reserved.</Copyright>
+  </PropertyGroup>
+</Project>

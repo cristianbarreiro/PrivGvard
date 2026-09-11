@@ -198,7 +198,7 @@ if (-not $IsccPath) {
 }
 
 Write-Host "Using ISCC compiler: $IsccPath" -ForegroundColor Gray
-& $IsccPath "/O$InstallerOutDir" "/FPrivGvard-Setup-1.0.0" "$ProjectRoot\installer\setup.iss"
+& $IsccPath "/O$InstallerOutDir" "/FPrivGvard-Setup-2.0.0" "$ProjectRoot\installer\setup.iss"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Installer compilation failed!"
@@ -207,7 +207,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 5. Create Portable Distribution ZIP
 Write-Host "`n[5/5] Packaging Portable distribution ZIP..." -ForegroundColor Yellow
-$PortableZipPath = Join-Path $InstallerOutDir "PrivGvard-Portable-1.0.0.zip"
+$PortableZipPath = Join-Path $InstallerOutDir "PrivGvard-Portable-2.0.0.zip"
 if (Test-Path -LiteralPath $PortableZipPath) {
     Remove-Item -LiteralPath $PortableZipPath -Force
 }
@@ -215,7 +215,7 @@ Compress-Archive -Path "$PublishDir\*" -DestinationPath $PortableZipPath -Force
 
 Write-Host "`n==========================================================" -ForegroundColor Green
 Write-Host " SUCCESS! Release assets generated successfully at:" -ForegroundColor Green
-Write-Host " Setup:    $InstallerOutDir\PrivGvard-Setup-1.0.0.exe" -ForegroundColor White
-Write-Host " Portable: $InstallerOutDir\PrivGvard-Portable-1.0.0.zip" -ForegroundColor White
+Write-Host " Setup:    $InstallerOutDir\PrivGvard-Setup-2.0.0.exe" -ForegroundColor White
+Write-Host " Portable: $InstallerOutDir\PrivGvard-Portable-2.0.0.zip" -ForegroundColor White
 Write-Host " Executable: $PublishDir\PrivGvard.exe" -ForegroundColor White
 Write-Host "==========================================================" -ForegroundColor Green

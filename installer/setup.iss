@@ -4,7 +4,7 @@
 ; =====================================================================
 
 #define MyAppName "PrivGvard"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "cdev Studio"
 #define MyAppExeName "PrivGvard.exe"
 #define MyAppId "{{8E0F7A12-BFB3-4FE8-B9A5-48FD50A15A9A}"
@@ -30,7 +30,7 @@ UsePreviousAppDir=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
-OutputBaseFilename=PrivGvard-Setup-1.0.0
+OutputBaseFilename=PrivGvard-Setup-2.0.0
 SetupIconFile=..\src\PrivLock.Desktop\Assets\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallFilesDir={app}
