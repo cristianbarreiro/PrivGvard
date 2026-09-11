@@ -52,11 +52,13 @@
 
                 <!-- Right: Window Controls -->
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Width="44" Height="38" Background="Transparent" BorderThickness="0"
+                    <Button Classes="titlebar-btn"
+                            Width="44" Height="38" Background="Transparent" BorderThickness="0" CornerRadius="0"
                             Click="OnMinimizeClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
                         <TextBlock Text="—" FontSize="11" Foreground="#AAAAAA" />
                     </Button>
-                    <Button Width="44" Height="38" Background="Transparent" BorderThickness="0"
+                    <Button Classes="titlebar-close"
+                            Width="44" Height="38" Background="Transparent" BorderThickness="0" CornerRadius="0"
                             Click="OnCloseClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
                         <TextBlock Text="✕" FontSize="12" Foreground="#AAAAAA" />
                     </Button>
