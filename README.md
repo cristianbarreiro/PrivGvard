@@ -21,6 +21,37 @@ PrivGvard follows the **Principle of Least Privilege**: it runs as **one single 
 
 ---
 
+## 📸 Preview
+
+<p align="center">
+  <img src="assets/screenshots/main-window.png" alt="PrivGvard main window" width="480" />
+  <br />
+  <em>PrivGvard main privacy controls.</em>
+</p>
+
+<table align="center" width="100%">
+  <tr>
+    <td align="center" width="50%" valign="top">
+      <h4>Settings &amp; Diagnostics</h4>
+      <!-- TODO screenshot:
+           Save the current PrivGvard 2.0 Settings screenshot as:
+           assets/screenshots/settings-window.png
+      -->
+      <em>Configuration, diagnostics and application preferences.</em>
+    </td>
+    <td align="center" width="50%" valign="top">
+      <h4>System Tray Integration</h4>
+      <!-- TODO screenshot:
+           Save the current PrivGvard 2.0 System Tray screenshot as:
+           assets/screenshots/system-tray.png
+      -->
+      <em>PrivGvard running discreetly in the Windows notification area.</em>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 📦 Releases & Downloads
 
 <div align="center">
