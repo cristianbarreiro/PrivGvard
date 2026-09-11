@@ -114,17 +114,26 @@ public partial class App : Avalonia.Application
 
             try
             {
-                var uri = new Uri("avares://PrivLock.UI/Assets/logo.png");
-                if (AssetLoader.Exists(uri))
+                var taskbarUri = new Uri("avares://PrivLock.UI/Assets/taskbar.ico");
+                if (AssetLoader.Exists(taskbarUri))
                 {
-                    using var stream = AssetLoader.Open(uri);
-                    var bitmap = new Bitmap(stream);
-                    windowIcon = new WindowIcon(bitmap);
+                    using var stream = AssetLoader.Open(taskbarUri);
+                    windowIcon = new WindowIcon(stream);
+                }
+                else
+                {
+                    var uri = new Uri("avares://PrivLock.UI/Assets/logo.png");
+                    if (AssetLoader.Exists(uri))
+                    {
+                        using var stream = AssetLoader.Open(uri);
+                        var bitmap = new Bitmap(stream);
+                        windowIcon = new WindowIcon(bitmap);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Could not load logo asset for window icon, using system default icon");
+                Log.Warning(ex, "Could not load taskbar.ico for window icon, using system default icon");
             }
 
             try
