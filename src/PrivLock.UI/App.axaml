@@ -47,7 +47,7 @@
         <Style Selector="MenuItem">
             <Setter Property="Foreground" Value="#EEEEEE" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="CornerRadius" Value="0" />
         </Style>
 
         <!-- Title Bar Window Control Buttons (Rectangular Desktop Style) -->
