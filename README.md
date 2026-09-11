@@ -82,7 +82,11 @@ PrivLock/
 │   ├── PrivLock.Domain.Tests/            # Domain unit tests
 │   ├── PrivLock.Infrastructure.Tests/    # Storage, crash reporting & localization tests
 │   ├── PrivLock.Application.Tests/       # Orchestration, on-demand elevation & business logic tests
-│   └── CamMicBlocker.Tests/              # Legacy compatibility tests; not part of the active solution
+│   └── PrivLock.Platform.Windows.Tests/  # Windows platform tests
+│
+├── legacy/                               # Quarantined archived PrivLock 1.x implementation & tests (build-guarded)
+│   ├── CamMicBlocker/
+│   └── tests/CamMicBlocker.Tests/
 │
 └── .github/workflows/
     └── ci.yml                            # GitHub Actions CI matrix (Windows, Ubuntu, macOS)

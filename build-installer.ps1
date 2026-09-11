@@ -117,19 +117,12 @@ Write-Host "==========================================================" -Foregro
 Write-Host " Building & Packaging PrivGvard Installer & Portable" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-# 1. Run Unit Tests
-Write-Host "`n[1/5] Running unit test suite..." -ForegroundColor Yellow
-dotnet test "$ProjectRoot\CamMicBlocker.sln" --configuration Release
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Unit tests failed! Aborting installer build."
-    exit 1
-}
-
-# 2. Clean previous build outputs
-Write-Host "`n[2/5] Cleaning previous output directories..." -ForegroundColor Yellow
+# 1. Clean previous build outputs and stale bin/obj
+Write-Host "`n[1/5] Cleaning output directories and active project build caches..." -ForegroundColor Yellow
 $PublishRoot = Join-Path $ProjectRoot "publish_out"
 $PublishDir = Join-Path $PublishRoot "win-x64"
 $InstallerOutDir = Join-Path $ProjectRoot "installer_out"
+$PublishDistDir = Join-Path $ProjectRoot "publish_dist"
 
 # A forced termination would bypass the reversible-session shutdown coordinator and can strand
 # camera/microphone state. Require the operator to exit PrivGvard normally instead.
@@ -139,9 +132,38 @@ if ($RunningInstances) {
     exit 1
 }
 
-Remove-VerifiedBuildDirectory $PublishDir "publish_out\win-x64"
+# Clean stale bin/obj directories in active projects
+$ActiveProjectDirs = @(
+    Get-ChildItem -Path "$ProjectRoot\src", "$ProjectRoot\tests" -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name.StartsWith("PrivLock") }
+)
+foreach ($projDir in $ActiveProjectDirs) {
+    foreach ($sub in @("bin", "obj")) {
+        $targetDir = Join-Path $projDir.FullName $sub
+        if (Test-Path -LiteralPath $targetDir) {
+            $relPath = $targetDir.Substring($ProjectRoot.Length).TrimStart($PathTrimCharacters)
+            Remove-VerifiedBuildDirectory $targetDir $relPath
+        }
+    }
+}
+
+# Clean stale publish_dist if present
+if (Test-Path -LiteralPath $PublishDistDir) {
+    Remove-VerifiedBuildDirectory $PublishDistDir "publish_dist"
+}
+
+# Safely clean the ENTIRE publish_out tree and installer_out
+Remove-VerifiedBuildDirectory $PublishRoot "publish_out"
 Remove-VerifiedBuildDirectory $InstallerOutDir "installer_out"
-if (-not (Test-Path -LiteralPath $InstallerOutDir)) { New-Item -ItemType Directory -Path $InstallerOutDir | Out-Null }
+if (-not (Test-Path -LiteralPath $PublishDir)) { New-Item -ItemType Directory -Path $PublishDir -Force | Out-Null }
+if (-not (Test-Path -LiteralPath $InstallerOutDir)) { New-Item -ItemType Directory -Path $InstallerOutDir -Force | Out-Null }
+
+# 2. Run Unit Tests
+Write-Host "`n[2/5] Running unit test suite..." -ForegroundColor Yellow
+dotnet test "$ProjectRoot\CamMicBlocker.sln" --configuration Release
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Unit tests failed! Aborting installer build."
+    exit 1
+}
 
 # 3. Publish Single-File Self-Contained Binary
 Write-Host "`n[3/5] Publishing single-file self-contained win-x64 release..." -ForegroundColor Yellow
@@ -160,6 +182,39 @@ if ($LASTEXITCODE -ne 0) {
 $PublishedExecutable = Join-Path $PublishDir "PrivGvard.exe"
 if (-not (Test-Path -LiteralPath $PublishedExecutable -PathType Leaf)) {
     Write-Error "Publishing completed without producing the expected executable: $PublishedExecutable"
+    exit 1
+}
+
+# Assert forbidden legacy executables do NOT exist inside publish_out
+$ForbiddenExecutables = @(Get-ChildItem -LiteralPath $PublishRoot -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -ieq "PrivLock.exe" -or $_.Name -ieq "CamMicBlocker.exe"
+})
+if ($ForbiddenExecutables.Count -gt 0) {
+    $ForbiddenList = ($ForbiddenExecutables | ForEach-Object { $_.FullName }) -join ", "
+    Write-Error "Forbidden legacy executable(s) found in publish output: $ForbiddenList"
+    exit 1
+}
+
+# Verify executable metadata
+$VersionInfo = (Get-Item -LiteralPath $PublishedExecutable).VersionInfo
+Write-Host "Verifying executable metadata for $PublishedExecutable..." -ForegroundColor Gray
+Write-Host "  Product: $($VersionInfo.ProductName)" -ForegroundColor Gray
+Write-Host "  Version: $($VersionInfo.ProductVersion)" -ForegroundColor Gray
+Write-Host "  Description: $($VersionInfo.FileDescription)" -ForegroundColor Gray
+
+if ($VersionInfo.ProductName -ieq "PrivLock" -or $VersionInfo.ProductName -ieq "CamMicBlocker" -or
+    $VersionInfo.FileDescription -ieq "PrivLock" -or $VersionInfo.FileDescription -ieq "CamMicBlocker") {
+    Write-Error "Executable metadata indicates legacy identity: ProductName='$($VersionInfo.ProductName)', FileDescription='$($VersionInfo.FileDescription)'"
+    exit 1
+}
+
+if ($VersionInfo.ProductName -ne "PrivGvard") {
+    Write-Error "Executable metadata ProductName mismatch: expected 'PrivGvard', got '$($VersionInfo.ProductName)'"
+    exit 1
+}
+
+if ($VersionInfo.ProductMajorPart -lt 2) {
+    Write-Error "Executable metadata version mismatch: expected major version 2+, got '$($VersionInfo.ProductMajorPart)'"
     exit 1
 }
 

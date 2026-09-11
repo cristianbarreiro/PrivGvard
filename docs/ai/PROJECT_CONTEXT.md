@@ -29,7 +29,12 @@ The requested product name is **PrivGvard**. The current repository is still nam
 | macOS | Detector/controller scaffolding exists, but capability provider reports `None`; persistent recovery adapter is unsupported; secure provider methods are currently no-op success paths | High |
 | Tests | Latest local run: 156 passed, 0 failed, 0 skipped (25 Domain, 30 Infrastructure, 58 Application, 43 Windows) | High |
 | CI | GitHub Actions defines Windows/Ubuntu/macOS build-test matrix and selected publish targets | High; native privacy behavior is not proven by CI |
-| Legacy code | The old `src/CamMicBlocker` WPF-style tree and compatibility tests are not part of the active solution path | High |
+| Legacy code | Archived at `legacy/CamMicBlocker` and `legacy/tests/CamMicBlocker.Tests`; build-guarded, not part of active solution | High |
+
+### Active Host vs Legacy Quarantine
+- **ACTIVE HOST**: `src/PrivLock.Desktop` (produces `PrivGvard.exe`).
+- **LEGACY**: `legacy/CamMicBlocker` (archived PrivLock 1.x implementation with build guard).
+- **NORMAL BUILDS MUST NEVER BUILD LEGACY CODE.**
 
 The current build succeeds with `dotnet build CamMicBlocker.sln --no-restore`. A concurrent restore attempt can fail because of a NuGet scratch-lock collision; that is an environment/parallelism issue and must not be reported as a product code failure without reproducing a serialized restore.
 

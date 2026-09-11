@@ -17,7 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CamMicBlocker\CamMicBlocker.csproj" />
+    <ProjectReference Include="..\..\CamMicBlocker\CamMicBlocker.csproj" />
   </ItemGroup>
+
+  <Target Name="PreventAccidentalLegacyBuild" BeforeTargets="BeforeBuild;BeforeRebuild">
+    <Error Condition="'$(AllowLegacyBuild)' != 'true'" Text="This is the archived PrivLock 1.x test project. Run tests for PrivGvard via CamMicBlocker.sln instead." />
+  </Target>
 
 </Project>

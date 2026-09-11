@@ -138,6 +138,11 @@ src/
     └── app.manifest                  # requestedExecutionLevel = asInvoker
 ```
 
+### Active Host vs Legacy Architecture
+- **ACTIVE HOST**: `src/PrivLock.Desktop` (produces `PrivGvard.exe`).
+- **LEGACY**: `legacy/CamMicBlocker` (archived PrivLock 1.x implementation with build guard; not part of active solution).
+- **NORMAL BUILDS MUST NEVER BUILD LEGACY CODE.**
+
 ---
 
 ## 5. Build, Test & Publish Commands

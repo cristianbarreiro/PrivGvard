@@ -36,4 +36,8 @@
     <Resource Include="UI\Resources\Icons\tray.ico" />
   </ItemGroup>
 
+  <Target Name="PreventAccidentalLegacyBuild" BeforeTargets="BeforeBuild;BeforeRebuild">
+    <Error Condition="'$(AllowLegacyBuild)' != 'true'" Text="This is the archived PrivLock 1.x project. Build PrivGvard from src/PrivLock.Desktop instead." />
+  </Target>
+
 </Project>
