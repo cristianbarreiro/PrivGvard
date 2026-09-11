@@ -213,10 +213,10 @@ public static class Program
             if (!startupRecovery.SafeToExit || startupRecovery.ConflictCount > 0)
             {
                 mainViewModel.ReportExternalError(
-                    startupRecovery.ErrorMessage ?? "A previous privacy session could not be fully restored.");
+                    startupRecovery.ErrorMessage ?? localizationService.GetString("StartupRecoveryFailed", "A previous privacy session could not be fully restored."));
             }
 
-            var exitCode = BuildAvaloniaApp(mainViewModel, _shutdownCoordinator, settingsViewModel)
+            var exitCode = BuildAvaloniaApp(mainViewModel, _shutdownCoordinator, settingsViewModel, localizationService)
                 .StartWithClassicDesktopLifetime(args);
 
             var finalRestoreFinished = _shutdownCoordinator.TryRestoreWithin(
@@ -302,8 +302,9 @@ public static class Program
     public static AppBuilder BuildAvaloniaApp(
         MainViewModel viewModel,
         ShutdownCoordinator shutdownCoordinator,
-        SettingsViewModel? settingsViewModel = null) =>
-        AppBuilder.Configure<App>(() => new App(viewModel, shutdownCoordinator, settingsViewModel))
+        SettingsViewModel? settingsViewModel = null,
+        LocalizationService? localizationService = null) =>
+        AppBuilder.Configure<App>(() => new App(viewModel, shutdownCoordinator, settingsViewModel, localizationService))
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace();

@@ -41,8 +41,8 @@ public static class LocalizationCatalog
 
         // Devices
         ["DetectedDevices"] = "Dispositivos de Hardware Detectados",
-        ["DeviceEnabled"] = "HABILITADO",
-        ["DeviceDisabled"] = "BLOQUEADO",
+        ["DeviceEnabled"] = "Habilitado",
+        ["DeviceDisabled"] = "Deshabilitado",
 
         // Settings & Footers
         ["StartWithSystem"] = "Iniciar con el sistema",
@@ -125,7 +125,69 @@ public static class LocalizationCatalog
         ["AboutDescription"] = "Solución de privacidad y control de hardware de cámara y micrófono para Windows.",
         ["AboutLicenseLabel"] = "Licencia",
         ["AboutLicenseValue"] = "Licencia MIT",
-        ["AboutCopyright"] = "© 2026 cdev Studio. Todos los derechos reservados."
+        ["AboutCopyright"] = "© 2026 cdev Studio. Todos los derechos reservados.",
+
+        // Device Types & Labels
+        ["DeviceTypeCamera"] = "Cámara",
+        ["DeviceTypeMicrophone"] = "Micrófono",
+        ["SummaryCameraLabel"] = "Cámara",
+        ["SummaryMicrophoneLabel"] = "Micrófono",
+
+        // User & Privilege Levels
+        ["UserStandard"] = "Usuario estándar",
+        ["UserAdmin"] = "Administrador",
+        ["DiagPrivilegeStandard"] = "Usuario estándar (asInvoker)",
+        ["DiagPrivilegeAdmin"] = "Administrador (Elevado)",
+
+        // Overall Badges & Protection Statuses
+        ["BadgeHardened"] = "Reforzado",
+        ["BadgeProtected"] = "Protegido",
+        ["BadgePartiallyProtected"] = "Parcialmente protegido",
+        ["BadgeUnprotected"] = "Sin protección",
+        ["StatusPartiallyBlocked"] = "🔒 Parcialmente bloqueado",
+        ["StatusActive"] = "🛡️ Activa",
+        ["StatusInactive"] = "○ Inactiva",
+
+        // Canonical Semantic Statuses
+        ["Enabled"] = "Habilitado",
+        ["Disabled"] = "Deshabilitado",
+        ["Protected"] = "Protegido",
+        ["Unprotected"] = "Sin protección",
+        ["Active"] = "Activo",
+        ["Inactive"] = "Inactivo",
+        ["Allowed"] = "Permitido",
+        ["Blocked"] = "Bloqueado",
+
+        // Diagnostics Formatting & Hardware States
+        ["DevicesCountFormat"] = "{0} dispositivos detectados en total",
+        ["Yes"] = "Sí",
+        ["No"] = "No",
+
+        // Main Window Menu
+        ["MenuToolTip"] = "Menú y Ajustes",
+        ["MenuGeneral"] = "⚙️  Ajustes",
+        ["MenuHelp"] = "📖  Ayuda y Documentación",
+        ["MenuDiagnostics"] = "🛡️  Diagnóstico del Sistema",
+        ["MenuAbout"] = "ℹ️  Acerca de PrivGvard",
+
+        // System Tray Menu & Tooltip
+        ["TrayOpen"] = "Abrir PrivGvard",
+        ["TrayExit"] = "Salir",
+        ["AppSubtitleLong"] = "PrivGvard - Bloqueador de Cámara y Micrófono",
+
+        // Common Error Fallbacks
+        ["ErrorUpdateCamera"] = "No se pudo actualizar la protección de la cámara",
+        ["ErrorUpdateMic"] = "No se pudo actualizar la protección del micrófono",
+        ["ErrorUpdateUnified"] = "No se pudo actualizar la protección unificada",
+        ["ErrorUpdateAdvanced"] = "No se pudo actualizar la Protección Avanzada",
+        ["ErrorCameraSecure"] = "Error de Protección Segura de Cámara",
+        ["ErrorMicSecure"] = "Error de Protección Segura de Micrófono",
+        ["ErrorBothSecure"] = "Error de Protección Segura Unificada",
+        ["ErrorLanguagePreference"] = "No se pudo guardar la preferencia de idioma",
+        ["ErrorAutostart"] = "No se pudo actualizar la configuración de inicio automático",
+        ["StartupRecoveryFailed"] = "No se pudo restaurar completamente una sesión de privacidad anterior.",
+        ["ErrorShutdownRestore"] = "PrivGvard no pudo restaurar con seguridad todos los cambios. Se canceló la salida.",
+        ["ErrorShutdownFailed"] = "Falló la restauración de cierre: {0}"
     };
 
     public static readonly IReadOnlyDictionary<string, string> StringsEn = new Dictionary<string, string>
@@ -163,8 +225,8 @@ public static class LocalizationCatalog
 
         // Devices
         ["DetectedDevices"] = "Detected Hardware Devices",
-        ["DeviceEnabled"] = "ENABLED",
-        ["DeviceDisabled"] = "BLOCKED",
+        ["DeviceEnabled"] = "Enabled",
+        ["DeviceDisabled"] = "Disabled",
 
         // Settings & Footers
         ["StartWithSystem"] = "Start with system",
@@ -247,7 +309,69 @@ public static class LocalizationCatalog
         ["AboutDescription"] = "Hardware privacy and camera/microphone security solution for Windows.",
         ["AboutLicenseLabel"] = "License",
         ["AboutLicenseValue"] = "MIT License",
-        ["AboutCopyright"] = "© 2026 cdev Studio. All rights reserved."
+        ["AboutCopyright"] = "© 2026 cdev Studio. All rights reserved.",
+
+        // Device Types & Labels
+        ["DeviceTypeCamera"] = "Camera",
+        ["DeviceTypeMicrophone"] = "Microphone",
+        ["SummaryCameraLabel"] = "Cam",
+        ["SummaryMicrophoneLabel"] = "Mic",
+
+        // User & Privilege Levels
+        ["UserStandard"] = "Standard User",
+        ["UserAdmin"] = "Administrator",
+        ["DiagPrivilegeStandard"] = "Standard User (asInvoker)",
+        ["DiagPrivilegeAdmin"] = "Administrator (Elevated)",
+
+        // Overall Badges & Protection Statuses
+        ["BadgeHardened"] = "Hardened",
+        ["BadgeProtected"] = "Protected",
+        ["BadgePartiallyProtected"] = "Partially Protected",
+        ["BadgeUnprotected"] = "Unprotected",
+        ["StatusPartiallyBlocked"] = "🔒 Partially Blocked",
+        ["StatusActive"] = "🛡️ Active",
+        ["StatusInactive"] = "○ Inactive",
+
+        // Canonical Semantic Statuses
+        ["Enabled"] = "Enabled",
+        ["Disabled"] = "Disabled",
+        ["Protected"] = "Protected",
+        ["Unprotected"] = "Unprotected",
+        ["Active"] = "Active",
+        ["Inactive"] = "Inactive",
+        ["Allowed"] = "Allowed",
+        ["Blocked"] = "Blocked",
+
+        // Diagnostics Formatting & Hardware States
+        ["DevicesCountFormat"] = "{0} devices detected in total",
+        ["Yes"] = "Yes",
+        ["No"] = "No",
+
+        // Main Window Menu
+        ["MenuToolTip"] = "Menu and Settings",
+        ["MenuGeneral"] = "⚙️  General Settings",
+        ["MenuHelp"] = "📖  Help & Documentation",
+        ["MenuDiagnostics"] = "🛡️  System Diagnostics",
+        ["MenuAbout"] = "ℹ️  About PrivGvard",
+
+        // System Tray Menu & Tooltip
+        ["TrayOpen"] = "Open PrivGvard",
+        ["TrayExit"] = "Exit",
+        ["AppSubtitleLong"] = "PrivGvard - Camera & Microphone Blocker",
+
+        // Common Error Fallbacks
+        ["ErrorUpdateCamera"] = "Failed to update Camera protection",
+        ["ErrorUpdateMic"] = "Failed to update Microphone protection",
+        ["ErrorUpdateUnified"] = "Failed to update Unified protection",
+        ["ErrorUpdateAdvanced"] = "Failed to update Advanced Protection",
+        ["ErrorCameraSecure"] = "Camera Secure Protection error",
+        ["ErrorMicSecure"] = "Microphone Secure Protection error",
+        ["ErrorBothSecure"] = "Both Secure Protection error",
+        ["ErrorLanguagePreference"] = "Failed to save language preference",
+        ["ErrorAutostart"] = "Failed to update autostart setting",
+        ["StartupRecoveryFailed"] = "A previous privacy session could not be fully restored.",
+        ["ErrorShutdownRestore"] = "PrivGvard could not safely restore every owned change. Exit was cancelled.",
+        ["ErrorShutdownFailed"] = "Shutdown restoration failed: {0}"
     };
 
     public static string Get(string key, string culture = "es", string fallback = "")

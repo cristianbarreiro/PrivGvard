@@ -21,8 +21,11 @@ public partial class App : Avalonia.Application
     private readonly MainViewModel? _mainViewModel;
     private readonly ShutdownCoordinator? _shutdownCoordinator;
     private readonly SettingsViewModel? _settingsViewModel;
+    private readonly LocalizationService? _localizationService;
     private TrayIcon? _trayIcon;
     private Window? _mainWindow;
+    private NativeMenuItem? _trayOpenItem;
+    private NativeMenuItem? _trayExitItem;
     private bool _shutdownCommitted;
     private bool _shutdownInProgress;
 
@@ -31,11 +34,21 @@ public partial class App : Avalonia.Application
     {
     }
 
-    public App(MainViewModel mainViewModel, ShutdownCoordinator shutdownCoordinator, SettingsViewModel? settingsViewModel = null)
+    public App(
+        MainViewModel mainViewModel,
+        ShutdownCoordinator shutdownCoordinator,
+        SettingsViewModel? settingsViewModel = null,
+        LocalizationService? localizationService = null)
     {
         _mainViewModel = mainViewModel;
         _shutdownCoordinator = shutdownCoordinator;
         _settingsViewModel = settingsViewModel;
+        _localizationService = localizationService;
+
+        if (_localizationService != null)
+        {
+            _localizationService.LanguageChanged += OnLanguageChanged;
+        }
     }
 
     public override void Initialize()
@@ -155,20 +168,23 @@ public partial class App : Avalonia.Application
 
             var nativeMenu = new NativeMenu();
 
-            var openItem = new NativeMenuItem("Abrir / Open PrivGvard");
-            openItem.Click += (_, _) => ShowMainWindow();
+            var openTitle = _localizationService?.GetString("Tray.Open") ?? "Abrir / Open PrivGvard";
+            _trayOpenItem = new NativeMenuItem(openTitle);
+            _trayOpenItem.Click += (_, _) => ShowMainWindow();
 
-            var exitItem = new NativeMenuItem("Salir / Exit");
-            exitItem.Click += (_, _) =>
+            var exitTitle = _localizationService?.GetString("Tray.Exit") ?? "Salir / Exit";
+            _trayExitItem = new NativeMenuItem(exitTitle);
+            _trayExitItem.Click += (_, _) =>
                 _ = RequestShutdownAsync(desktop, "TrayExit", allowIncomplete: false);
 
-            nativeMenu.Items.Add(openItem);
+            nativeMenu.Items.Add(_trayOpenItem);
             nativeMenu.Items.Add(new NativeMenuItemSeparator());
-            nativeMenu.Items.Add(exitItem);
+            nativeMenu.Items.Add(_trayExitItem);
 
+            var toolTip = _localizationService?.GetString("Tray.ToolTip") ?? "PrivGvard - Camera & Microphone Blocker";
             _trayIcon = new TrayIcon
             {
-                ToolTipText = "PrivGvard - Camera & Microphone Blocker",
+                ToolTipText = toolTip,
                 IsVisible = true,
                 Menu = nativeMenu
             };
@@ -193,6 +209,19 @@ public partial class App : Avalonia.Application
         {
             Log.Error(ex, "Failed to initialize System Tray Icon");
         }
+    }
+
+    private void OnLanguageChanged(string lang)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_trayOpenItem != null && _localizationService != null)
+                _trayOpenItem.Header = _localizationService.GetString("Tray.Open");
+            if (_trayExitItem != null && _localizationService != null)
+                _trayExitItem.Header = _localizationService.GetString("Tray.Exit");
+            if (_trayIcon != null && _localizationService != null)
+                _trayIcon.ToolTipText = _localizationService.GetString("Tray.ToolTip");
+        });
     }
 
     public void ShowMainWindow()
@@ -251,8 +280,11 @@ public partial class App : Avalonia.Application
             {
                 _shutdownCoordinator.AbortShutdownAfterFailedUserExit();
                 _shutdownInProgress = false;
-                _mainViewModel?.ReportExternalError(
-                    recovery.ErrorMessage ?? "PrivGvard could not safely restore every owned change. Exit was cancelled.");
+                var fallbackMsg = _localizationService?.GetString(
+                    "ErrorShutdownRestore",
+                    "PrivGvard could not safely restore every owned change. Exit was cancelled.")
+                    ?? "PrivGvard could not safely restore every owned change. Exit was cancelled.";
+                _mainViewModel?.ReportExternalError(recovery.ErrorMessage ?? fallbackMsg);
                 ShowMainWindow();
                 return;
             }
@@ -280,7 +312,11 @@ public partial class App : Avalonia.Application
 
             _shutdownCoordinator.AbortShutdownAfterFailedUserExit();
             _shutdownInProgress = false;
-            _mainViewModel?.ReportExternalError($"Shutdown restoration failed: {ex.Message}");
+            var format = _localizationService?.GetString(
+                "ErrorShutdownFailed",
+                "Shutdown restoration failed: {0}")
+                ?? "Shutdown restoration failed: {0}";
+            _mainViewModel?.ReportExternalError(string.Format(format, ex.Message));
             ShowMainWindow();
         }
     }

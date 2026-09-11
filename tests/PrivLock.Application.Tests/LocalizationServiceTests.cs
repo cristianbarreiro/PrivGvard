@@ -39,4 +39,30 @@ public class LocalizationServiceTests
         Assert.True(languageChangedFired);
         _storeMock.Verify(s => s.Save(It.Is<DesiredState>(ds => ds.Language == "en")), Times.Once);
     }
+
+    [Fact]
+    public void SetLanguage_DynamicSwitching_EsToEnAndBackToEs()
+    {
+        var languageHistory = new List<string>();
+        _service.LanguageChanged += lang => languageHistory.Add(lang);
+
+        // Initial is "es"
+        Assert.Equal("es", _service.CurrentLanguage);
+        Assert.Equal("Sin protección", _service.GetString("BadgeUnprotected"));
+        Assert.Equal("Usuario estándar", _service.GetString("UserStandard"));
+
+        // Switch ES -> EN
+        _service.SetLanguage("en");
+        Assert.Equal("en", _service.CurrentLanguage);
+        Assert.Equal("Unprotected", _service.GetString("BadgeUnprotected"));
+        Assert.Equal("Standard User", _service.GetString("UserStandard"));
+
+        // Switch EN -> ES
+        _service.SetLanguage("es");
+        Assert.Equal("es", _service.CurrentLanguage);
+        Assert.Equal("Sin protección", _service.GetString("BadgeUnprotected"));
+        Assert.Equal("Usuario estándar", _service.GetString("UserStandard"));
+
+        Assert.Equal(new[] { "en", "es" }, languageHistory);
+    }
 }

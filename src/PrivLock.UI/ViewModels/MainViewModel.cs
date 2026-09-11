@@ -192,6 +192,13 @@ public sealed partial class MainViewModel : ObservableObject
     public string UnifiedStandardDesc => _localizationService.GetString("UnifiedStandardDesc");
     public string UnifiedSecureDesc => _localizationService.GetString("UnifiedSecureDesc");
 
+    // Main Menu Flyout
+    public string MenuToolTip => _localizationService.GetString("MenuToolTip", "Menú y Ajustes");
+    public string MenuGeneral => _localizationService.GetString("MenuGeneral", "⚙️  Ajustes");
+    public string MenuHelp => _localizationService.GetString("MenuHelp", "📖  Ayuda y Documentación");
+    public string MenuDiagnostics => _localizationService.GetString("MenuDiagnostics", "🛡️  Diagnóstico del Sistema");
+    public string MenuAbout => _localizationService.GetString("MenuAbout", "ℹ️  Acerca de PrivGvard");
+
     public MainViewModel(
         ProtectionService protectionService,
         SettingsService settingsService,
@@ -208,11 +215,24 @@ public sealed partial class MainViewModel : ObservableObject
         _isEnglishSelected = !_isSpanishSelected;
         _isAutostartEnabled = _settingsService.IsAutostartEnabled();
 
-        var info = _protectionService.PlatformInfo;
-        PlatformName = $"{info.OperatingSystemName} ({info.Architecture}) - {(info.IsElevated ? "Admin/Root" : "Standard User")}";
-        CapabilitiesSummary = $"Cam: {_protectionService.Capabilities.CameraProtectionLevel} | Mic: {_protectionService.Capabilities.MicrophoneProtectionLevel}";
+        UpdatePlatformAndCapabilities();
 
         _ = RefreshStateAsync();
+    }
+
+    private void UpdatePlatformAndCapabilities()
+    {
+        var info = _protectionService.PlatformInfo;
+        var userRole = info.IsElevated
+            ? _localizationService.GetString("UserAdmin", "Administrador")
+            : _localizationService.GetString("UserStandard", "Usuario estándar");
+        PlatformName = $"{info.OperatingSystemName} ({info.Architecture}) - {userRole}";
+
+        var camLabel = _localizationService.GetString("SummaryCameraLabel", "Cámara");
+        var micLabel = _localizationService.GetString("SummaryMicrophoneLabel", "Micrófono");
+        CapabilitiesSummary = $"{camLabel}: {_protectionService.Capabilities.CameraProtectionLevel} | {micLabel}: {_protectionService.Capabilities.MicrophoneProtectionLevel}";
+
+        AppSubtitle = _localizationService.GetString("AppSubtitle", "Bloqueador de Cámara y Micrófono");
     }
 
     public async Task RefreshStateAsync()
@@ -250,6 +270,9 @@ public sealed partial class MainViewModel : ObservableObject
     {
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
+            IsSpanishSelected = lang == "es";
+            IsEnglishSelected = lang == "en";
+
             OnPropertyChanged(nameof(CameraTitle));
             OnPropertyChanged(nameof(CameraSubtitle));
             OnPropertyChanged(nameof(MicrophoneTitle));
@@ -269,6 +292,14 @@ public sealed partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(UnifiedSubtitle));
             OnPropertyChanged(nameof(UnifiedStandardDesc));
             OnPropertyChanged(nameof(UnifiedSecureDesc));
+
+            OnPropertyChanged(nameof(MenuToolTip));
+            OnPropertyChanged(nameof(MenuGeneral));
+            OnPropertyChanged(nameof(MenuHelp));
+            OnPropertyChanged(nameof(MenuDiagnostics));
+            OnPropertyChanged(nameof(MenuAbout));
+
+            UpdatePlatformAndCapabilities();
             _ = RefreshStateAsync();
         });
     }
@@ -401,7 +432,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (!bothBlocked)
             {
                 BothStatusText = (camBlocked || micBlocked)
-                    ? _localizationService.GetString("StatusBlockedStandard", "🔒 Partially Blocked")
+                    ? _localizationService.GetString("StatusPartiallyBlocked", "🔒 Parcialmente bloqueado")
                     : _localizationService.GetString("StatusUnblocked", "✅ Allowed");
                 BothStatusColor = (camBlocked || micBlocked) ? "#FFA726" : "#81C784";
                 BothStandardText = _localizationService.GetString("StatusStandardInactive", "○ Standard Inactive");
@@ -457,23 +488,28 @@ public sealed partial class MainViewModel : ObservableObject
 
             // Overall Badge
             if (state.BothSecure)
-                SecurityBadgeText = "Hardened (Secure)";
+                SecurityBadgeText = _localizationService.GetString("BadgeHardened", "Reforzado");
             else if (state.BothProtected)
-                SecurityBadgeText = "Protected (Standard)";
+                SecurityBadgeText = _localizationService.GetString("BadgeProtected", "Protegido");
             else if (state.Camera.IsProtected || state.Microphone.IsProtected)
-                SecurityBadgeText = "Partially Protected";
+                SecurityBadgeText = _localizationService.GetString("BadgePartiallyProtected", "Parcialmente protegido");
             else
-                SecurityBadgeText = "Unprotected";
+                SecurityBadgeText = _localizationService.GetString("BadgeUnprotected", "Sin protección");
 
             // Devices list
-            var enabledStr = _localizationService.GetString("DeviceEnabled", "ENABLED");
-            var disabledStr = _localizationService.GetString("DeviceDisabled", "BLOCKED");
+            var enabledStr = _localizationService.GetString("DeviceEnabled", "Habilitado");
+            var disabledStr = _localizationService.GetString("DeviceDisabled", "Deshabilitado");
+            var camTypeLabel = _localizationService.GetString("DeviceTypeCamera", "Cámara");
+            var micTypeLabel = _localizationService.GetString("DeviceTypeMicrophone", "Micrófono");
 
             Devices.Clear();
             foreach (var d in devices)
             {
-                Devices.Add(new DeviceItemViewModel(d, enabledStr, disabledStr));
+                var category = d.DeviceType == DeviceType.Camera ? camTypeLabel : micTypeLabel;
+                Devices.Add(new DeviceItemViewModel(d, category, enabledStr, disabledStr));
             }
+
+            UpdatePlatformAndCapabilities();
         }
         finally
         {
@@ -500,7 +536,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "Failed to update Camera protection");
+            ShowError(result.ErrorMessage ?? _localizationService.GetString("ErrorUpdateCamera", "Failed to update Camera protection"));
             await RefreshStateAsync();
         }
     }
@@ -528,7 +564,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "Failed to update Microphone protection");
+            ShowError(result.ErrorMessage ?? _localizationService.GetString("ErrorUpdateMic", "Failed to update Microphone protection"));
             await RefreshStateAsync();
         }
     }
@@ -556,7 +592,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "Failed to update Unified protection");
+            ShowError(result.ErrorMessage ?? _localizationService.GetString("ErrorUpdateUnified", "Failed to update Unified protection"));
             await RefreshStateAsync();
         }
     }
@@ -581,7 +617,7 @@ public sealed partial class MainViewModel : ObservableObject
         var result = await _protectionService.SetAdvancedProtectionAsync(enable);
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "Failed to update Advanced Protection");
+            ShowError(result.ErrorMessage ?? _localizationService.GetString("ErrorUpdateAdvanced", "Failed to update Advanced Protection"));
             await RefreshStateAsync();
         }
     }
@@ -595,7 +631,7 @@ public sealed partial class MainViewModel : ObservableObject
         await ToggleSecureAsync(
             BlockTarget.Camera,
             state => state.Camera.SecureState == SecureProtectionState.Active,
-            "Camera Secure Protection error");
+            _localizationService.GetString("ErrorCameraSecure", "Camera Secure Protection error"));
     }
 
     [RelayCommand]
@@ -605,7 +641,7 @@ public sealed partial class MainViewModel : ObservableObject
         await ToggleSecureAsync(
             BlockTarget.Microphone,
             state => state.Microphone.SecureState == SecureProtectionState.Active,
-            "Microphone Secure Protection error");
+            _localizationService.GetString("ErrorMicSecure", "Microphone Secure Protection error"));
     }
 
     [RelayCommand]
@@ -616,7 +652,7 @@ public sealed partial class MainViewModel : ObservableObject
             BlockTarget.Both,
             state => state.Camera.SecureState == SecureProtectionState.Active &&
                      state.Microphone.SecureState == SecureProtectionState.Active,
-            "Both Secure Protection error");
+            _localizationService.GetString("ErrorBothSecure", "Both Secure Protection error"));
     }
 
     private async Task ToggleSecureAsync(
@@ -651,7 +687,7 @@ public sealed partial class MainViewModel : ObservableObject
         IsSpanishSelected = lang == "es";
         IsEnglishSelected = lang == "en";
         if (!result.Success)
-            ShowError(result.ErrorMessage ?? "Failed to save language preference");
+            ShowError(result.ErrorMessage ?? _localizationService.GetString("ErrorLanguagePreference", "Failed to save language preference"));
     }
 
     [RelayCommand]
@@ -662,7 +698,7 @@ public sealed partial class MainViewModel : ObservableObject
         IsAutostartEnabled = _settingsService.IsAutostartEnabled();
         if (!result.Success)
         {
-            ShowError(result.ErrorMessage ?? "Failed to update autostart setting");
+            ShowError(result.ErrorMessage ?? _localizationService.GetString("ErrorAutostart", "Failed to update autostart setting"));
         }
     }
 

@@ -282,7 +282,7 @@
 
                                 <StackPanel Grid.Row="4" Grid.ColumnSpan="2">
                                     <TextBlock Text="{Binding DiagDevicesCountLabel}" FontSize="10" Foreground="#888888" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding DevicesCount, StringFormat='{}{0} dispositivos detectados en total'}" FontSize="11" Foreground="White" />
+                                    <TextBlock Text="{Binding DevicesCountSummary}" FontSize="11" Foreground="White" />
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -290,7 +290,7 @@
                         <!-- Detected Hardware List -->
                         <Border Classes="settingCard">
                             <StackPanel Spacing="6">
-                                <TextBlock Text="Dispositivos Detectados" FontSize="11" FontWeight="Bold" Foreground="White" />
+                                <TextBlock Text="{Binding DetectedDevicesLabel}" FontSize="11" FontWeight="Bold" Foreground="White" />
                                 <ItemsControl ItemsSource="{Binding DetectedDevicesList}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>

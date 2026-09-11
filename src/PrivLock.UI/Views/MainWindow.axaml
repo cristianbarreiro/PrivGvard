@@ -37,15 +37,15 @@
                 <!-- Left: Settings Dropdown Button -->
                 <Button HorizontalAlignment="Left" VerticalAlignment="Center"
                         Background="Transparent" BorderThickness="0" Padding="6,4"
-                        Margin="10,0,0,0" Cursor="Hand" ToolTip.Tip="Menú y Ajustes">
+                        Margin="10,0,0,0" Cursor="Hand" ToolTip.Tip="{Binding MenuToolTip}">
                     <TextBlock Text="⚙️" FontSize="13" Foreground="#AAAAAA" />
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                            <MenuItem Header="⚙️  Ajustes" Command="{Binding OpenSettingsCommand}" CommandParameter="General" />
-                            <MenuItem Header="📖  Ayuda y Documentación" Command="{Binding OpenSettingsCommand}" CommandParameter="Help" />
-                            <MenuItem Header="🛡️  Diagnóstico del Sistema" Command="{Binding OpenSettingsCommand}" CommandParameter="Diagnostics" />
+                            <MenuItem Header="{Binding MenuGeneral}" Command="{Binding OpenSettingsCommand}" CommandParameter="General" />
+                            <MenuItem Header="{Binding MenuHelp}" Command="{Binding OpenSettingsCommand}" CommandParameter="Help" />
+                            <MenuItem Header="{Binding MenuDiagnostics}" Command="{Binding OpenSettingsCommand}" CommandParameter="Diagnostics" />
                             <Separator />
-                            <MenuItem Header="ℹ️  Acerca de PrivGvard" Command="{Binding OpenSettingsCommand}" CommandParameter="About" />
+                            <MenuItem Header="{Binding MenuAbout}" Command="{Binding OpenSettingsCommand}" CommandParameter="About" />
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>

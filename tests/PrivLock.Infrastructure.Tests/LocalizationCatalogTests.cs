@@ -31,4 +31,27 @@ public class LocalizationCatalogTests
         Assert.NotEmpty(dictEn);
         Assert.Equal(dictEs.Count, dictEn.Count);
     }
+
+    [Theory]
+    [InlineData("es", "BadgeUnprotected", "Sin protección")]
+    [InlineData("en", "BadgeUnprotected", "Unprotected")]
+    [InlineData("es", "BadgeProtected", "Protegido")]
+    [InlineData("en", "BadgeProtected", "Protected")]
+    [InlineData("es", "UserStandard", "Usuario estándar")]
+    [InlineData("en", "UserStandard", "Standard User")]
+    [InlineData("es", "UserAdmin", "Administrador")]
+    [InlineData("en", "UserAdmin", "Administrator")]
+    [InlineData("es", "DeviceTypeCamera", "Cámara")]
+    [InlineData("en", "DeviceTypeCamera", "Camera")]
+    [InlineData("es", "DeviceTypeMicrophone", "Micrófono")]
+    [InlineData("en", "DeviceTypeMicrophone", "Microphone")]
+    [InlineData("es", "DeviceEnabled", "Habilitado")]
+    [InlineData("en", "DeviceEnabled", "Enabled")]
+    [InlineData("es", "DeviceDisabled", "Deshabilitado")]
+    [InlineData("en", "DeviceDisabled", "Disabled")]
+    public void Get_RequiredSemanticKeys_ReturnCorrectTranslation(string lang, string key, string expected)
+    {
+        var result = LocalizationCatalog.Get(key, lang);
+        Assert.Equal(expected, result);
+    }
 }

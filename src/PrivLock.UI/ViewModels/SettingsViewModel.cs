@@ -59,6 +59,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private int _devicesCount;
 
+    [ObservableProperty]
+    private string _devicesCountSummary = "";
+
     public ObservableCollection<string> DetectedDevicesList { get; } = [];
 
     // --- About Section Properties ---
@@ -114,6 +117,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string DiagMicStatusLabel => _localizationService.GetString("DiagMicStatusLabel", "Estado de Micrófono");
     public string DiagAdvancedLabel => _localizationService.GetString("DiagAdvancedLabel", "Protección Avanzada");
     public string DiagDevicesCountLabel => _localizationService.GetString("DiagDevicesCountLabel", "Dispositivos Detectados");
+    public string DetectedDevicesLabel => _localizationService.GetString("DetectedDevices", "Dispositivos Detectados");
     public string DiagCapabilitiesLabel => _localizationService.GetString("DiagCapabilitiesLabel", "Nivel de Capacidades");
     public string DiagRefreshButton => _localizationService.GetString("DiagRefreshButton", "Actualizar Diagnóstico");
 
@@ -196,30 +200,50 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             var info = _protectionService.PlatformInfo;
-            OsName = $"{info.OperatingSystemName} {info.OsVersion}";
+            OsName = info.OsVersion.Contains(info.OperatingSystemName, StringComparison.OrdinalIgnoreCase)
+                ? info.OsVersion
+                : $"{info.OperatingSystemName} {info.OsVersion}";
             Architecture = $"{info.Architecture} ({(info.Is64Bit ? "64-bit" : "32-bit")})";
-            PrivilegeLevel = info.IsElevated ? "Administrador (Elevado)" : "Usuario Estándar (asInvoker)";
+            PrivilegeLevel = info.IsElevated
+                ? _localizationService.GetString("DiagPrivilegeAdmin", "Administrador (Elevado)")
+                : _localizationService.GetString("DiagPrivilegeStandard", "Usuario estándar (asInvoker)");
 
             var caps = _protectionService.Capabilities;
-            CapabilitiesSummary = $"Cam: {caps.CameraProtectionLevel} | Mic: {caps.MicrophoneProtectionLevel} | Hardware: {(caps.SupportsHardwareDisable ? "Sí" : "No")}";
+            var camPrefix = _localizationService.GetString("SummaryCameraLabel", "Cámara");
+            var micPrefix = _localizationService.GetString("SummaryMicrophoneLabel", "Micrófono");
+            var hwYesNo = caps.SupportsHardwareDisable
+                ? _localizationService.GetString("Yes", "Sí")
+                : _localizationService.GetString("No", "No");
+            CapabilitiesSummary = $"{camPrefix}: {caps.CameraProtectionLevel} | {micPrefix}: {caps.MicrophoneProtectionLevel} | Hardware: {hwYesNo}";
 
             var state = await _protectionService.GetCurrentStateAsync();
             CameraStatus = state.Camera.IsProtected
-                ? (state.Camera.SecureState == SecureProtectionState.Active ? "🛡️ Bloqueado (Seguro)" : "🔒 Bloqueado (Estándar)")
-                : "✅ Permitido";
+                ? (state.Camera.SecureState == SecureProtectionState.Active
+                    ? _localizationService.GetString("StatusBlockedAdvanced", "🛡️ Bloqueado (Avanzado)")
+                    : _localizationService.GetString("StatusBlockedStandard", "🔒 Bloqueado (Estándar)"))
+                : _localizationService.GetString("StatusUnblocked", "✅ Permitido");
             MicrophoneStatus = state.Microphone.IsProtected
-                ? (state.Microphone.SecureState == SecureProtectionState.Active ? "🛡️ Bloqueado (Seguro)" : "🔒 Bloqueado (Estándar)")
-                : "✅ Permitido";
-            AdvancedStatus = state.AdvancedProtectionEnabled ? "🛡️ Activa" : "○ Inactiva";
+                ? (state.Microphone.SecureState == SecureProtectionState.Active
+                    ? _localizationService.GetString("StatusBlockedAdvanced", "🛡️ Bloqueado (Avanzado)")
+                    : _localizationService.GetString("StatusBlockedStandard", "🔒 Bloqueado (Estándar)"))
+                : _localizationService.GetString("StatusUnblocked", "✅ Permitido");
+            AdvancedStatus = state.AdvancedProtectionEnabled
+                ? _localizationService.GetString("StatusActive", "🛡️ Activa")
+                : _localizationService.GetString("StatusInactive", "○ Inactiva");
 
             var devices = await _protectionService.GetDetectedDevicesAsync();
             DevicesCount = devices.Count;
+            DevicesCountSummary = string.Format(
+                _localizationService.GetString("DevicesCountFormat", "{0} dispositivos detectados en total"),
+                devices.Count);
 
             DetectedDevicesList.Clear();
+            var enabledStatus = _localizationService.GetString("DeviceEnabled", "Habilitado");
+            var disabledStatus = _localizationService.GetString("DeviceDisabled", "Deshabilitado");
             foreach (var d in devices)
             {
                 var typeIcon = d.DeviceType == DeviceType.Camera ? "📷" : "🎙️";
-                var statusStr = d.IsEnabled ? "ACTIVO" : "BLOQUEADO";
+                var statusStr = d.IsEnabled ? enabledStatus : disabledStatus;
                 DetectedDevicesList.Add($"{typeIcon} {d.FriendlyName} [{statusStr}]");
             }
         }
@@ -283,6 +307,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             OnPropertyChanged(nameof(DiagMicStatusLabel));
             OnPropertyChanged(nameof(DiagAdvancedLabel));
             OnPropertyChanged(nameof(DiagDevicesCountLabel));
+            OnPropertyChanged(nameof(DetectedDevicesLabel));
             OnPropertyChanged(nameof(DiagCapabilitiesLabel));
             OnPropertyChanged(nameof(DiagRefreshButton));
 
