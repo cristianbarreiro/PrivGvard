@@ -11,8 +11,6 @@ public partial class MainWindow : Window
     private readonly SettingsViewModel? _settingsViewModel;
     private SettingsWindow? _settingsWindow;
 
-    public event EventHandler? ApplicationExitRequested;
-
     public MainWindow() : this(null)
     {
     }
@@ -86,7 +84,7 @@ public partial class MainWindow : Window
 
     private void OnCloseClick(object? sender, RoutedEventArgs e)
     {
-        ApplicationExitRequested?.Invoke(this, EventArgs.Empty);
+        Close();
     }
 
     protected override void OnClosing(WindowClosingEventArgs e)
@@ -94,13 +92,13 @@ public partial class MainWindow : Window
         if (!_allowApplicationClose)
         {
             e.Cancel = true;
-            ApplicationExitRequested?.Invoke(this, EventArgs.Empty);
+            Hide();
+            return;
         }
-        else
-        {
-            _settingsWindow?.Close();
-            _settingsWindow = null;
-        }
+
+        _settingsWindow?.Close();
+        _settingsWindow = null;
+
         base.OnClosing(e);
     }
 
