@@ -70,7 +70,8 @@ public static class LocalizationCatalog
         ["StandardRequiredFirst"] = "Debes activar la Protección Estándar antes de activar la Protección Segura.",
 
         // Settings Window Navigation
-        ["SettingsWindowTitle"] = "Configuración — PrivGvard",
+        ["SettingsWindowTitle"] = "Configuración",
+        ["SettingsHeaderTitle"] = "Configuración",
         ["SettingsNavGeneral"] = "Ajustes",
         ["SettingsNavHelp"] = "Ayuda y Documentación",
         ["SettingsNavDiagnostics"] = "Diagnóstico del Sistema",
@@ -191,7 +192,8 @@ public static class LocalizationCatalog
         ["StandardRequiredFirst"] = "You must enable Standard Protection before enabling Secure Protection.",
 
         // Settings Window Navigation
-        ["SettingsWindowTitle"] = "Settings — PrivGvard",
+        ["SettingsWindowTitle"] = "Settings",
+        ["SettingsHeaderTitle"] = "Settings",
         ["SettingsNavGeneral"] = "General",
         ["SettingsNavHelp"] = "Help & Documentation",
         ["SettingsNavDiagnostics"] = "System Diagnostics",

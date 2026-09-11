@@ -14,6 +14,10 @@
         ExtendClientAreaChromeHints="NoChrome"
         ExtendClientAreaTitleBarHeightHint="38">
 
+    <Window.Resources>
+        <FontFamily x:Key="ComfortaaFont">avares://PrivLock.UI/Assets/Fonts#Comfortaa, avares://PrivLock.UI/Assets/Fonts#Comfortaa SemiBold</FontFamily>
+    </Window.Resources>
+
     <Window.Styles>
         <!-- Navigation Item Styles -->
         <Style Selector="Button.navItem">
@@ -51,21 +55,28 @@
     <Grid RowDefinitions="38,*">
         <!-- 1. Custom TitleBar -->
         <Border Grid.Row="0" Background="#1A1A1D" IsHitTestVisible="True" PointerPressed="OnTitleBarPointerPressed">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0" Spacing="8">
-                    <TextBlock Text="⚙️" FontSize="13" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding WindowTitle}" FontWeight="Bold" FontSize="13" Foreground="White" VerticalAlignment="Center" />
-                </StackPanel>
+            <Grid>
+                <!-- Centered Title (Geometric Window Center) -->
+                <TextBlock Text="{Binding HeaderTitle}"
+                           FontFamily="{StaticResource ComfortaaFont}"
+                           FontWeight="SemiBold"
+                           FontSize="13"
+                           Foreground="White"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False" />
 
                 <!-- Window Controls -->
-                <Button Classes="titlebar-btn" Grid.Column="2" Width="44" Height="38" Background="Transparent" BorderThickness="0" CornerRadius="0"
-                        Click="OnMinimizeClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
-                    <TextBlock Text="—" FontSize="11" Foreground="#AAAAAA" />
-                </Button>
-                <Button Classes="titlebar-close" Grid.Column="3" Width="44" Height="38" Background="Transparent" BorderThickness="0" CornerRadius="0"
-                        Click="OnCloseClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
-                    <TextBlock Text="✕" FontSize="12" Foreground="#AAAAAA" />
-                </Button>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Classes="titlebar-btn" Width="44" Height="38" Background="Transparent" BorderThickness="0" CornerRadius="0"
+                            Click="OnMinimizeClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                        <TextBlock Text="—" FontSize="11" Foreground="#AAAAAA" />
+                    </Button>
+                    <Button Classes="titlebar-close" Width="44" Height="38" Background="Transparent" BorderThickness="0" CornerRadius="0"
+                            Click="OnCloseClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
+                        <TextBlock Text="✕" FontSize="12" Foreground="#AAAAAA" />
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -299,8 +310,16 @@
 
                         <Border Classes="settingCard">
                             <StackPanel Spacing="8" HorizontalAlignment="Center" Margin="0,8">
-                                <TextBlock Text="🛡️" FontSize="36" HorizontalAlignment="Center" />
-                                <TextBlock Text="{Binding AppName}" FontSize="18" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" />
+                                <Image Source="avares://PrivLock.UI/Assets/logo.png"
+                                       Width="56" Height="56"
+                                       HorizontalAlignment="Center"
+                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                <TextBlock Text="{Binding AppName}"
+                                           FontFamily="{StaticResource ComfortaaFont}"
+                                           FontWeight="SemiBold"
+                                           FontSize="18"
+                                           Foreground="White"
+                                           HorizontalAlignment="Center" />
                                 <Border Background="#007ACC" CornerRadius="10" Padding="8,3" HorizontalAlignment="Center">
                                     <TextBlock Text="{Binding AppVersion, StringFormat='v{0}'}" FontSize="11" FontWeight="Bold" Foreground="White" />
                                 </Border>

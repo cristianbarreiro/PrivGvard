@@ -69,7 +69,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     private string _appVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString(3) ?? "2.0.0";
 
     // --- Localized Titles & Labels ---
-    public string WindowTitle => _localizationService.GetString("SettingsWindowTitle", "Configuración — PrivGvard");
+    public string WindowTitle => _localizationService.GetString("SettingsWindowTitle", "Configuración");
+    public string HeaderTitle => _localizationService.GetString("SettingsHeaderTitle", "Configuración");
     public string NavGeneral => _localizationService.GetString("SettingsNavGeneral", "Ajustes");
     public string NavHelp => _localizationService.GetString("SettingsNavHelp", "Ayuda y Documentación");
     public string NavDiagnostics => _localizationService.GetString("SettingsNavDiagnostics", "Diagnóstico del Sistema");
@@ -241,6 +242,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             IsEnglishSelected = lang == "en";
 
             OnPropertyChanged(nameof(WindowTitle));
+            OnPropertyChanged(nameof(HeaderTitle));
             OnPropertyChanged(nameof(NavGeneral));
             OnPropertyChanged(nameof(NavHelp));
             OnPropertyChanged(nameof(NavDiagnostics));
