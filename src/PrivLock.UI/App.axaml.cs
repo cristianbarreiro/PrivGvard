@@ -110,6 +110,7 @@ public partial class App : Avalonia.Application
         try
         {
             WindowIcon? windowIcon = null;
+            WindowIcon? trayIcon = null;
 
             try
             {
@@ -123,7 +124,21 @@ public partial class App : Avalonia.Application
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Could not load logo asset for tray icon, using system default icon");
+                Log.Warning(ex, "Could not load logo asset for window icon, using system default icon");
+            }
+
+            try
+            {
+                var trayUri = new Uri("avares://PrivLock.UI/Assets/tray.ico");
+                if (AssetLoader.Exists(trayUri))
+                {
+                    using var stream = AssetLoader.Open(trayUri);
+                    trayIcon = new WindowIcon(stream);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Could not load tray.ico for tray icon, falling back to window icon");
             }
 
             if (_mainWindow != null && windowIcon != null)
@@ -151,7 +166,11 @@ public partial class App : Avalonia.Application
                 Menu = nativeMenu
             };
 
-            if (windowIcon != null)
+            if (trayIcon != null)
+            {
+                _trayIcon.Icon = trayIcon;
+            }
+            else if (windowIcon != null)
             {
                 _trayIcon.Icon = windowIcon;
             }

@@ -33,6 +33,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Resource Include="UI\Resources\Icons\app.ico" />
+    <Resource Include="UI\Resources\Icons\tray.ico" />
   </ItemGroup>
 
 </Project>

@@ -30,6 +30,7 @@ public sealed class TrayIconManager : IDisposable
     private Icon? _greenIcon;
     private Icon? _redIcon;
     private Icon? _yellowIcon;
+    private Icon? _trayIcon;
 
     // Menu item icons (tracked for disposal)
     private Image? _showAppIcon;
@@ -56,6 +57,7 @@ public sealed class TrayIconManager : IDisposable
         _languageService = languageService;
 
         // Generate tray icons: Green = Unlocked Padlock (Open), Red = Locked Padlock (Closed)
+        _trayIcon = LoadTrayIcon();
         _greenIcon = CreatePadlockIcon(Color.SeaGreen, isLocked: false);
         _redIcon = CreatePadlockIcon(Color.IndianRed, isLocked: true);
         _yellowIcon = CreatePadlockIcon(Color.Goldenrod, isLocked: false);
@@ -126,7 +128,7 @@ public sealed class TrayIconManager : IDisposable
         // Create NotifyIcon
         _notifyIcon = new NotifyIcon
         {
-            Icon = _greenIcon,
+            Icon = _trayIcon ?? _greenIcon,
             Text = "CamMicBlocker",
             Visible = true,
             ContextMenuStrip = _contextMenu
@@ -314,9 +316,11 @@ public sealed class TrayIconManager : IDisposable
         _greenIcon?.Dispose();
         _redIcon?.Dispose();
         _yellowIcon?.Dispose();
+        _trayIcon?.Dispose();
         _greenIcon = null;
         _redIcon = null;
         _yellowIcon = null;
+        _trayIcon = null;
 
         _showAppIcon?.Dispose();
         _hideAppIcon?.Dispose();
@@ -330,5 +334,26 @@ public sealed class TrayIconManager : IDisposable
         _exitIcon = null;
 
         Log.Debug("TrayIconManager disposed");
+    }
+
+    /// <summary>
+    /// Loads the optimized tray icon from WPF pack resources.
+    /// </summary>
+    private static Icon? LoadTrayIcon()
+    {
+        try
+        {
+            var uri = new Uri("pack://application:,,,/UI/Resources/Icons/tray.ico");
+            var streamInfo = System.Windows.Application.GetResourceStream(uri);
+            if (streamInfo?.Stream != null)
+            {
+                return new Icon(streamInfo.Stream);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Could not load pack resource tray.ico for NotifyIcon");
+        }
+        return null;
     }
 }
