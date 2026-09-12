@@ -1,17 +1,21 @@
-# PrivLock — Project Guidelines & Security Rules
+# PrivGvard — Agent Guidelines & Architecture Summary
 
-Refer to the primary project documentation in `AGENTS.md` at the workspace root for complete architectural guidelines, build instructions, 9-point risk assessment checklists, capabilities matrix, and security policies.
+This file serves as a lightweight workspace adapter. Refer to the canonical documentation and primary guidelines:
 
-## Quick Architecture Summary
-- **Single Application Model**: One single binary (`PrivLock.exe` / `PrivLock`) running as standard user (`asInvoker`). No separate elevated executable.
-- **Dynamic On-Demand Elevation**: Administrative rights requested strictly at the moment a privileged operation is executed (via short-lived self-invocation `--privileged-exec`), or directly in-process if already elevated.
-- **Target**: .NET 10 / C# (Cross-Platform)
-- **UI Framework**: Avalonia UI 11+ (Fluent Dark Theme, System Tray, Custom Window Chrome)
-- **Architecture**: Clean Architecture (Domain, Platform.Abstractions, Infrastructure.Common, Application, Native Platform Adapters, Avalonia UI, Desktop Host)
-- **Platform Implementations**:
-  - **Windows**: `CfgMgr32.dll` PnP Hardware Controller + `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` Group Policies + WMI GUID Detection.
-  - **Linux**: V4L2/sysfs device node control & ACLs + PipeWire (`wpctl`) / PulseAudio (`pactl`) sound server source lock + Polkit (`pkexec`).
-  - **macOS**: CoreAudio HAL Hardware Input Mute (`AudioObjectSetPropertyData`) + AVFoundation state inspection + LaunchAgents plist.
-- **Security & Capabilities**: Declarative `PlatformCapabilities` (honest security reporting, fail securely, verified state).
-- **Logging & Diagnostics**: Serilog rolling logs + structured JSON crash reports in `%LOCALAPPDATA%\PrivLock\` (Windows), `~/.local/share/PrivLock/` (Linux), `~/Library/Application Support/PrivLock/` (macOS).
-- **Localization**: Pure C# `LocalizationCatalog` (`StringsEn`/`StringsEs`) with dynamic UI binding.
+- **Canonical Context (OKF)**: [docs/ai/PROJECT_CONTEXT.md](../docs/ai/PROJECT_CONTEXT.md)
+- **Repository Safety & Security Rules**: [AGENTS.md](../AGENTS.md)
+- **Current Roadmap & Audit**: [docs/ai/AUDIT-ROADMAP.md](../docs/ai/AUDIT-ROADMAP.md)
+
+---
+
+## Quick Reference Summary
+
+- **Product Identity**: **PrivGvard** (produces `PrivGvard.exe` / `PrivGvard`). Internal namespaces and solution retain `PrivLock.*` and `CamMicBlocker.sln`.
+- **Single-Binary & Least Privilege**: The application runs unprivileged (`asInvoker`). Privileged actions execute transiently via self-invocation as an authenticated worker (`--privileged-worker`) with named-pipe IPC and 256-bit nonces. The legacy public `--privileged-exec` dispatcher is permanently removed.
+- **Platform Boundaries**:
+  - **Windows**: Full protection supported (CfgMgr32 PnP node toggle, AppPrivacy Group Policies, Core Audio mute lock, durable WAL session journal recovery).
+  - **Linux & macOS**: Discovery and UI scaffolds (`CapabilityLevel.None`, `UnsupportedPrivacySessionPlatformAdapter`). Mutation is not supported in production.
+- **Testing Topology**: Shared tests (Domain, Application, Infrastructure) execute across all platforms; Windows-specific tests execute only on Windows runners. Volatile test numbers must not be hardcoded into documentation.
+- **Storage & Logs**: `%LOCALAPPDATA%\PrivGvard\` (automatically migrates legacy `%LOCALAPPDATA%\PrivLock\` data via `StorageMigrationHelper`).
+- **UI Lifecycle**: Title-bar close button (`X`) and `Alt+F4` hide the main window to the System Tray; full exit with coordinated journal restoration is executed from the System Tray menu.
+- **Active Host vs. Legacy**: Active code is in `src/PrivLock.*` with host `src/PrivLock.Desktop`. Legacy code is quarantined in `legacy/CamMicBlocker`. Normal builds must never touch legacy code.

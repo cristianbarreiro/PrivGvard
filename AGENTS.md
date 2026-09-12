@@ -2,14 +2,21 @@
 
 This document provides operational context, safety rules, architectural conventions, and engineering guidelines for AI agents working on **PrivGvard**.
 
-> **Repository identity (audited 2026-09-06):** the requested product name is **PrivGvard**, while the repository, namespaces, assembly, solution and executable still use `CamMicBlocker`/`PrivLock`. Do not perform a global rename unless the task explicitly requests a branding migration. The canonical, model-neutral context is [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md); the audit and staged plan are in [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md).
+> **Repository Identity:**
+> - **Public Product Identity**: **PrivGvard** (produces `PrivGvard.exe` on Windows, `PrivGvard` on Linux/macOS).
+> - **Internal Historical Identifiers**: The solution file is `CamMicBlocker.sln`, and internal namespaces/projects use `PrivLock.*` for backward compatibility and stability.
+> - **Canonical Project Context**: [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md).
+> - **Audit & Evolution Roadmap**: [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md).
+> - **Do not perform a global rename of internal namespaces or solution files unless the task explicitly requests an internal code migration.**
+
+---
 
 ## 0. Current Baseline — Do Not Overstate Support
 
-- The Windows path is the only path with a production-grade durable privacy-session journal, ownership attestations, authenticated on-demand privileged worker, and recovery validation.
-- Linux and macOS providers are integration scaffolds. Their capability providers currently expose `CapabilityLevel.None` and production DI uses `UnsupportedPrivacySessionPlatformAdapter`. Do not describe either platform as safely supported for camera/microphone mutation until exact capture, verification, rollback and hotplug tests exist.
-- The current solution has **156 passing tests** in the latest local run: 25 Domain, 30 Infrastructure, 58 Application and 43 Windows. Documentation claiming 61 tests is stale.
-- A method returning `OperationResult.Ok()` is not evidence that a device is blocked. Only a fresh native observation may justify a verified protected state.
+- **Windows**: The primary verified platform with a production-grade durable privacy-session journal (WAL), ownership attestations, authenticated on-demand privileged worker (`--privileged-worker`), and verified recovery.
+- **Linux & macOS**: Integration scaffolds. Their capability providers expose `CapabilityLevel.None` and production DI registers `UnsupportedPrivacySessionPlatformAdapter`. Do not describe either platform as safely supported for camera/microphone mutation until exact capture, verification, rollback, and hotplug adapters exist.
+- **Test Baseline**: Run the complete active test suite. Do not hardcode volatile test counts into durable documentation; refer to CI and local test runner output.
+- **Verified State Invariant**: A method returning `OperationResult.Ok()` is not evidence that a device is blocked. Only a fresh native observation (`EffectiveStatus`) justifies a verified protected state.
 
 ---
 
@@ -17,23 +24,23 @@ This document provides operational context, safety rules, architectural conventi
 
 ### A. Core Security Principles
 - **Single-Binary & Least Privilege (On-Demand Elevation)**:
-  - PrivLock runs as **one single application (`PrivLock.exe` / `PrivLock`)** starting with standard unprivileged user rights (`asInvoker`).
-  - There is **NO second elevated application** (`PrivLock.Elevated.exe` is strictly prohibited).
+  - PrivGvard runs as **one single application (`PrivGvard.exe` / `PrivGvard`)** starting with standard unprivileged user rights (`asInvoker`).
+  - There is **NO second elevated application** (`PrivLock.Elevated.exe` or similar is strictly prohibited).
   - Privileged actions (e.g., PnP node state, HKLM Registry Group Policies) request OS authorization/elevation **strictly on-demand** at the moment the user triggers that specific action.
-- **Official Native APIs First**: Always use officially supported platform APIs. These are design targets, not permission to enable unfinished production paths:
+- **Official Native APIs First**: Always use officially supported platform APIs:
   - **Windows**: `CfgMgr32.dll` PnP node management, `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` Group Policies, WMI `Win32_PnPEntity`, and Core Audio endpoint state.
   - **Linux**: V4L2 device discovery, PipeWire/PulseAudio or WirePlumber APIs, and Polkit only after an exact reversible state model exists. Never use a blind `chmod`/`chmod 660` pair as a restore strategy.
   - **macOS**: CoreAudio HAL for exact input state and AVFoundation/TCC for truthful camera capability reporting. macOS TCC must not be represented as if the application can silently revoke another app's camera permission.
 - **Zero Low-Level Hardware Tampering**: Never attempt to modify hardware firmware, device registers, flash memory, EEPROM, or kernel-mode driver binaries. All hardware protection must be strictly software-level PnP node state toggling, driver unbinds, sound server locks, and OS Group Policy enforcement.
 - **Zero Security Bypasses**: Never implement UAC bypasses, bypass driver signature enforcement, disable Windows Defender, bypass macOS SIP / hardened runtime, or alter system security subsystems. Security and system stability take priority over implementation convenience.
 - **Fail Securely & Verified State**: Never report a device as "Blocked" unless verified against actual state (`EffectiveStatus`).
-- **No Swallowing Errors**: Never catch exceptions silently (`catch { }` is strictly prohibited). Critical driver, PnP, permission, or hardware errors must be logged with context and passed to `CrashReporter`. Native command exit codes, timeouts and verification failures are operation failures, not warnings that can be converted into success.
+- **No Swallowing Errors**: Never catch exceptions silently (`catch { }` is strictly prohibited). Critical driver, PnP, permission, or hardware errors must be logged with context and passed to `CrashReporter`. Native command exit codes, timeouts, and verification failures are operation failures, not warnings that can be converted into success.
 
 ### B. Risk Classification & Validation Policy
 Validate changes proportionally to their potential impact on system stability:
 
 - **Low-Risk Changes (UI / UX / Localization / ViewModels)**:
-  - *Scope*: Avalonia XAML layouts, Fluent dark styling, `LocalizationCatalog` (`StringsEn`/`StringsEs`), tray tooltips, non-blocking UI logic.
+  - *Scope*: Avalonia XAML layouts, Fluent dark styling, `LocalizationCatalog`, tray tooltips, non-blocking UI logic.
   - *Validation*: Build (`dotnet build`) and visual smoke test.
 
 - **High-Risk Changes (PnP / Kernel Driver / Audio HAL / Registry / Privileges / OS Subsystems)**:
@@ -68,13 +75,13 @@ The following architecture is implemented for Windows. Linux and macOS elevation
 2. **What Privileged Operations Are Performed on Windows**:
    - Setting/removing `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` keys (`LetAppsAccessCamera`, `LetAppsAccessMicrophone`).
    - Disabling/enabling PnP device nodes in `CfgMgr32.dll` via device instance IDs.
-   - Linux `/dev/video*`, driver unbind, PipeWire and macOS authorization changes are roadmap items, not currently supported operations.
+   - Linux `/dev/video*`, driver unbind, PipeWire, and macOS authorization changes are roadmap items, not currently supported operations.
 3. **Why Single-Binary Self-Invocation is Superior on Windows**:
-   Instead of a permanent elevated daemon or a separate binary (`PrivLock.Elevated.exe`), `PrivLock` invokes its own executable (`Environment.ProcessPath`) as a transient authenticated `--privileged-worker` using Windows UAC `Verb="runas"`. The legacy public `--privileged-exec` mutation dispatcher is prohibited because it bypasses the recovery journal.
+   Instead of a permanent elevated daemon or a separate binary (`PrivLock.Elevated.exe`), `PrivGvard` invokes its own executable (`Environment.ProcessPath`) as a transient authenticated `--privileged-worker` using Windows UAC `Verb="runas"`. The legacy public `--privileged-exec` mutation dispatcher is prohibited and rejected because it could bypass the recovery journal.
 4. **Communication & IPC**:
    - Windows uses short-lived transient execution and a bounded, versioned named-pipe protocol.
    - The CLI carries only a random pipe name, parent PID, and 256-bit nonce.
-   - ACL, nonce, request correlation and bilateral kernel PID verification are required; there is no result temp file. Linux/macOS have no equivalent production worker path yet.
+   - ACL, nonce, request correlation, and bilateral kernel PID verification are required; no temporary file is used for IPC results. Linux/macOS have no equivalent production worker path yet.
 5. **Minimizing Attack Surface**:
    - The main application runs with unprivileged `asInvoker` token.
    - The authenticated worker implements a closed per-resource whitelist (`apply-policy`, `restore-policy`, `apply-device`, `restore-device`, `verify-policy-ownership`, `verify-device-ownership`, `ping`) and revalidates canonical targets immediately before native calls.
@@ -104,42 +111,42 @@ src/
 │   └── IStateStore.cs                # State persistence contract
 │
 ├── PrivLock.Infrastructure.Common/   # Cross-platform shared infrastructure
-│   ├── Storage/                      # FileStateStore (JSON in OS AppData)
+│   ├── Storage/                      # FileStateStore & StorageMigrationHelper (JSON in OS AppData)
 │   ├── Logging/                      # LoggingConfiguration (Serilog) & CrashReporter (JSON dumps)
 │   └── Localization/                 # LocalizationCatalog (In-memory bilingual catalogs)
 │
 ├── PrivLock.Application/             # Use cases & orchestration (100% OS & UI agnostic)
-│   └── Services/                     # ProtectionService, SettingsService, LocalizationService
+│   └── Services/                     # ProtectionService, SettingsService, LocalizationService, PrivacySessionService
 │
 ├── PrivLock.Platform.Windows/        # Windows native implementations
 │   ├── Devices/                      # CfgMgr32 P/Invoke & WindowsDeviceDetector (WMI/GUIDs)
 │   ├── Policies/                     # HKLM AppPrivacy Registry Policies
 │   ├── Elevation/                    # WindowsElevationProvider & On-Demand UAC
-│   ├── Privileged/                   # WindowsPrivilegedExecutor (Self-invocation & whitelist)
+│   ├── Privileged/                   # WindowsPrivilegedWorker & Named-Pipe IPC Protocol
 │   └── System/                       # WindowsAutostartProvider, WindowsHotkeyProvider, WindowsSingleInstanceGuard
 │
-├── PrivLock.Platform.Linux/          # Linux native implementations
+├── PrivLock.Platform.Linux/          # Linux native implementations (Scaffold)
 │   ├── Devices/                      # V4L2/sysfs DeviceDetector & PipeWire/PulseAudio Controller
 │   ├── Elevation/                    # LinuxElevationProvider (Polkit/pkexec / euid)
 │   └── System/                       # LinuxAutostartProvider, LinuxSingleInstanceGuard
 │
-├── PrivLock.Platform.MacOS/          # macOS native implementations
+├── PrivLock.Platform.MacOS/          # macOS native implementations (Scaffold)
 │   ├── Devices/                      # CoreAudio HAL DeviceDetector & Input Mute Controller
 │   ├── Elevation/                    # MacOSElevationProvider (osascript / authorization)
 │   └── System/                       # MacOSAutostartProvider, MacOSSingleInstanceGuard
 │
 ├── PrivLock.UI/                      # Multiplatform UI in Avalonia 11
-│   ├── Views/                        # MainWindow.axaml with custom Fluent Dark chrome
-│   ├── ViewModels/                   # MainViewModel, DeviceItemViewModel
-│   └── App.axaml                     # Fluent Dark theme & styles
+│   ├── Views/                        # MainWindow.axaml, SettingsWindow.axaml with Fluent Dark styling
+│   ├── ViewModels/                   # MainViewModel, DeviceItemViewModel, SettingsViewModel
+│   └── App.axaml                     # Fluent Dark theme, styles, tray icon lifecycle
 │
-└── PrivLock.Desktop/                 # Single Executable Host
+└── PrivLock.Desktop/                 # Single Executable Host (PrivGvard.exe)
     ├── Program.cs                    # Platform DI composition root & authenticated --privileged-worker dispatcher
     └── app.manifest                  # requestedExecutionLevel = asInvoker
 ```
 
-### Active Host vs Legacy Architecture
-- **ACTIVE HOST**: `src/PrivLock.Desktop` (produces `PrivGvard.exe`).
+### Active Host vs. Legacy Architecture
+- **ACTIVE HOST**: `src/PrivLock.Desktop` (produces `PrivGvard.exe` on Windows, `PrivGvard` on Linux/macOS).
 - **LEGACY**: `legacy/CamMicBlocker` (archived PrivLock 1.x implementation with build guard; not part of active solution).
 - **NORMAL BUILDS MUST NEVER BUILD LEGACY CODE.**
 
@@ -152,9 +159,18 @@ src/
 dotnet build CamMicBlocker.sln
 ```
 
-### Run Full Test Suite (156 Tests at the 2026-09-06 Baseline)
+### Run Active Test Suite
 ```powershell
+# On Windows (runs all tests including Windows platform tests):
 dotnet test CamMicBlocker.sln
+
+# Cross-platform test execution (Domain, Application, Infrastructure):
+dotnet test tests/PrivLock.Domain.Tests/PrivLock.Domain.Tests.csproj
+dotnet test tests/PrivLock.Application.Tests/PrivLock.Application.Tests.csproj
+dotnet test tests/PrivLock.Infrastructure.Tests/PrivLock.Infrastructure.Tests.csproj
+
+# Windows Platform tests (Windows runners only):
+dotnet test tests/PrivLock.Platform.Windows.Tests/PrivLock.Platform.Windows.Tests.csproj
 ```
 
 ### Run Application (Debug)
@@ -179,10 +195,12 @@ dotnet publish src/PrivLock.Desktop/PrivLock.Desktop.csproj -c Release -r linux-
 dotnet publish src/PrivLock.Desktop/PrivLock.Desktop.csproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -o publish_out/osx-arm64
 ```
 
+---
+
 ## 6. AI-Assisted Engineering Workflow
 
 1. Read [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md) before making architectural assumptions.
 2. For an audit, use [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md) as the current evidence baseline and update it when findings change.
-3. For implementation, state the affected OS subsystem, mutation boundary, rollback proof, verification observation and test plan before editing high-risk code.
-4. Treat README marketing text, generated publish folders and legacy `src/CamMicBlocker` files as non-authoritative unless the task explicitly includes them.
-5. If a requested feature cannot be implemented with exact capture, verification and recovery, keep it read-only or return an explicit unsupported result. Never make a partial implementation look protected.
+3. For implementation, state the affected OS subsystem, mutation boundary, rollback proof, verification observation, and test plan before editing high-risk code.
+4. Treat README marketing text, generated publish folders, and legacy `legacy/CamMicBlocker` files as non-authoritative unless the task explicitly includes them.
+5. If a requested feature cannot be implemented with exact capture, verification, and recovery, keep it read-only or return an explicit unsupported result. Never make a partial implementation look protected.

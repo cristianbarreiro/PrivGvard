@@ -377,7 +377,18 @@ public static class LocalizationCatalog
     public static string Get(string key, string culture = "es", string fallback = "")
     {
         var dict = culture.StartsWith("en", StringComparison.OrdinalIgnoreCase) ? StringsEn : StringsEs;
-        return dict.TryGetValue(key, out var val) ? val : (string.IsNullOrEmpty(fallback) ? key : fallback);
+        if (dict.TryGetValue(key, out var val))
+            return val;
+
+        if (key.Equals("Tray.Open", StringComparison.OrdinalIgnoreCase) && dict.TryGetValue("TrayOpen", out val))
+            return val;
+        if (key.Equals("Tray.Exit", StringComparison.OrdinalIgnoreCase) && dict.TryGetValue("TrayExit", out val))
+            return val;
+        if ((key.Equals("Tray.ToolTip", StringComparison.OrdinalIgnoreCase) || key.Equals("TrayToolTip", StringComparison.OrdinalIgnoreCase))
+            && dict.TryGetValue("AppSubtitleLong", out val))
+            return val;
+
+        return string.IsNullOrEmpty(fallback) ? key : fallback;
     }
 
     public static string GetString(string key, string culture = "es", string fallback = "") =>

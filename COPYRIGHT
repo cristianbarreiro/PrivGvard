@@ -1,9 +1,9 @@
 # Copyright & Licensing Notice
 
-## PrivGvard — Camera & Microphone Blocker for Windows
+## PrivGvard — Camera & Microphone Privacy Guard
 
 ```text
-PrivGvard — Camera & Microphone Blocker for Windows
+PrivGvard — Camera & Microphone Privacy Guard
 Copyright (C) 2026 Cristian Barreiro
 Repository: https://github.com/cristianbarreiro/PrivGvard.git
 ```
@@ -25,21 +25,21 @@ You should have received a copy of the GNU General Public License along with thi
 All source files in this repository should include the following header notice at the top of the file:
 
 ```csharp
-// PrivLock — Camera & Microphone Blocker for Windows
+// PrivGvard — Camera & Microphone Privacy Guard
 // Copyright (C) <YEAR> <COPYRIGHT HOLDER> (<REPOSITORY_URL>)
 //
-// PrivLock is free software: you can redistribute it and/or modify
+// PrivGvard is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 //
-// PrivLock is distributed in the hope that it will be useful,
+// PrivGvard is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with PrivLock.  If not, see <https://www.gnu.org/licenses/>.
+// along with PrivGvard.  If not, see <https://www.gnu.org/licenses/>.
 ```
 
 ---
@@ -50,10 +50,11 @@ PrivGvard relies on the following third-party components and standard libraries,
 
 | Component / Dependency | License | Project / Home URL |
 | :--- | :--- | :--- |
-| **.NET 10 Runtime / WPF** | MIT License | [dotnet/wpf](https://github.com/dotnet/wpf) |
+| **.NET 10 Runtime** | MIT License | [dotnet/runtime](https://github.com/dotnet/runtime) |
+| **Avalonia UI** | MIT License | [AvaloniaUI/Avalonia](https://github.com/AvaloniaUI/Avalonia) |
 | **Serilog** | Apache License 2.0 | [serilog/serilog](https://github.com/serilog/serilog) |
 | **Serilog.Sinks.File** | Apache License 2.0 | [serilog/serilog-sinks-file](https://github.com/serilog/serilog-sinks-file) |
 | **xUnit** | Apache License 2.0 | [xunit/xunit](https://github.com/xunit/xunit) |
-| **Comfortaa Font** | SIL Open Font License 1.1 | [google/fonts](https://fonts.google.com/specimen/Comfortaa) |
+| **Inter Font** | SIL Open Font License 1.1 | [rsms/inter](https://github.com/rsms/inter) |
 
-All listed dependencies use permissive open-source licenses (MIT, Apache 2.0) that are fully compatible with the GNU General Public License v3.0 (GPL-3.0).
+All listed dependencies use permissive open-source licenses (MIT, Apache 2.0, OFL 1.1) that are fully compatible with the GNU General Public License v3.0 (GPL-3.0).

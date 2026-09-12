@@ -4,20 +4,22 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Platform Support" />
+  <img src="https://img.shields.io/badge/Build%20Targets-Windows%20%7C%20Linux%20%7C%20macOS-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Build Targets" />
+  <img src="https://img.shields.io/badge/Privacy%20Protection-Windows%20(Primary)-005999?style=for-the-badge&logo=windows" alt="Primary Privacy Protection" />
   <img src="https://img.shields.io/badge/Framework-.NET%2010.0%20%7C%20Avalonia%20UI-512BD4?style=for-the-badge&logo=dotnet&logoColor=white" alt=".NET 10 & Avalonia UI" />
   <img src="https://img.shields.io/badge/Security-Least%20Privilege%20%7C%20On--Demand%20Elevation-4CAF50?style=for-the-badge&logo=security&logoColor=white" alt="Security" />
   <img src="https://img.shields.io/badge/License-GNU%20GPLv3-0078D4?style=for-the-badge&logo=gnu" alt="GPLv3 License" />
   <img src="https://img.shields.io/badge/Language-Español%20%7C%20English-007ACC?style=for-the-badge" alt="i18n Support" />
 </p>
 
-**PrivGvard** is intended to be a native, transparent privacy utility for **Windows**, **Linux**, and **macOS** (C# / .NET 10 and Avalonia UI). The current verified implementation is Windows-first: it focuses on exact state capture, on-demand authorization, effective-state verification and journaled recovery. Linux and macOS remain discovery/UI scaffolds until their native recovery adapters are complete.
+**PrivGvard** is a desktop privacy application built with C# / .NET 10 and Avalonia UI that gives users transparent, reversible control over their camera and microphone.
 
-The product name is **PrivGvard** (executable: `PrivGvard.exe`, storage: `%LOCALAPPDATA%\PrivGvard`). The internal C# namespaces and solution retain historical identifiers for architectural stability and seamless upgrade compatibility with previous versions.
+PrivGvard follows the **Principle of Least Privilege**: it starts as a standard unprivileged user application (`asInvoker`), elevating privileges **strictly on-demand** for explicitly authorized operations via a transient, authenticated worker process.
 
-PrivGvard follows the **Principle of Least Privilege**: it runs as **one single application** with standard user permissions by default, elevating privileges **only on-demand** for an explicitly authorized operation.
-
-> **Support boundary:** compiling a Linux or macOS artifact does not mean that camera/microphone mutation is supported on that platform. The capability providers currently report `None`, and persistent recovery is not implemented there.
+> [!NOTE]
+> **Platform Support Boundary:**
+> - **Windows**: Primary supported platform featuring dual-layer policy and PnP hardware control, Core Audio capture mute lock, transactional Write-Ahead Log (WAL) recovery, and authenticated on-demand elevation.
+> - **Linux & macOS**: Supported compilation targets and hardware discovery scaffolds (`CapabilityLevel.None`). Camera and microphone privacy mutations are not production-enabled on Linux or macOS until exact reversible state models and persistent recovery adapters are completed.
 
 ---
 
@@ -56,11 +58,11 @@ PrivGvard follows the **Principle of Least Privilege**: it runs as **one single 
 
 <div align="center">
 
-| Platform | Format | Architecture | Download Link |
+| Platform | Format | Architecture | Status / Purpose |
 | :--- | :---: | :---: | :---: |
-| 🪟 **Windows** | Portable Single-File / Setup target | `win-x64`, `win-arm64` | Release support candidate; validate the published release notes |
-| 🐧 **Linux** | Build/publish target | `linux-x64`, `linux-arm64` | Discovery/UI only; privacy mutation not supported yet |
-| 🍎 **macOS** | Build/publish target | `osx-arm64`, `osx-x64` | Discovery/UI only; privacy mutation not supported yet |
+| 🪟 **Windows** | Setup Installer (`.exe`) / Portable (`.zip`) | `win-x64`, `win-arm64` | Full protection and recovery candidate |
+| 🐧 **Linux** | Single-File Executable | `linux-x64` | Build/publish target; discovery scaffold only |
+| 🍎 **macOS** | Single-File Executable | `osx-arm64` | Build/publish target; discovery scaffold only |
 
 </div>
 
@@ -68,59 +70,54 @@ PrivGvard follows the **Principle of Least Privilege**: it runs as **one single 
 
 ## ✨ Key Features
 
-- 🛡️ **Capability-aware protection**:
-  - **Windows (current primary target)**:
-    1. *Policy layer*: captures and controls the supported AppPrivacy values with exact original value/type/existence tracking.
-    2. *Device/audio layer*: uses verified PnP and capture-endpoint state through the authenticated, short-lived elevated worker.
-    3. *Recovery layer*: persists per-resource intent and restores only confirmed PrivGvard-owned changes.
-  - **Linux (roadmap)**: discovery and experimental controller code exist, but production capabilities are `None`. No camera/microphone privacy mutation should be advertised until exact PipeWire/V4L2 state capture and recovery are implemented.
-  - **macOS (roadmap)**: discovery and experimental CoreAudio code exist, but production capabilities are `None`. TCC is an OS privacy boundary, not a silent revoke API; only verified, reversible capabilities may be enabled.
-- ⚡ **Single Application & Dynamic On-Demand Elevation**:
-  - Starts as a standard user process (`asInvoker`).
-  - On Windows, the authenticated worker requests UAC **strictly on-demand** for the exact journaled operation. Linux/macOS authorization is roadmap work and must not be inferred from the presence of an elevation provider.
-  - No separate `PrivLock.Elevated.exe` binary — everything is self-contained.
-- 🎯 **Transparent Capabilities Model**:
-  - PrivGvard exposes supported, read-only, unknown and unsupported states rather than inferring protection from a requested setting.
-- 🎨 **Modern Fluent Dark UI Design**:
-  - Avalonia UI 11 with integrated custom title bar (38px), rounded card containers, and responsive layout.
+- 🛡️ **Capability-Aware Privacy Protection**:
+  - **Windows**:
+    1. *System Policy Layer*: captures and manages Windows `AppPrivacy` policies with exact value, type, and existence tracking.
+    2. *PnP Hardware & Audio Layer*: toggles hardware device node states via `CfgMgr32.dll` and locks Core Audio capture endpoints.
+    3. *Transactional Recovery*: commits state changes to a Write-Ahead Log (WAL) before mutation, restoring only session-owned changes on shutdown or restart.
+  - **Linux & macOS**: Transparently exposes platform capabilities as read-only/scaffold, preventing false claims of protection.
+- ⚡ **Single Binary & Dynamic On-Demand Elevation**:
+  - Runs as an unprivileged process by default (`asInvoker`).
+  - On Windows, privileged operations execute through a short-lived self-invocation (`PrivGvard.exe --privileged-worker`) with named-pipe IPC, 256-bit cryptographically random nonces, and parent-child PID verification.
+  - No permanent elevated daemon and no secondary elevated executable.
+- 🎨 **Modern Fluent Dark Interface**:
+  - Avalonia UI 11 with custom title bar, rounded card styling, and responsive layout.
 - 🌐 **Dynamic Multilingual Support (ES / EN)**:
-  - Real-time segmented `[ ES | EN ]` language switcher with zero app restart needed.
-- ⌨️ **Global Keyboard Shortcut**: Toggle instant protection at any time with **`Ctrl + Alt + B`**.
-- 📌 **System Tray & Autostart Integration**:
-  - Minimizes seamlessly to the system notification area on close `(X)`.
-  - Native autostart support across Windows (`Run` key), Linux (`~/.config/autostart`), and macOS (`LaunchAgents`).
+  - Real-time language switching without restarting the application.
+- ⌨️ **Global Keyboard Shortcut**:
+  - Toggle quick protection at any time with **`Ctrl + Alt + B`**.
+- 📌 **System Tray & Window Lifecycle**:
+  - Closing the window (`X` or `Alt+F4`) hides the interface to the system tray while keeping protection active.
+  - Tray context menu provides localized options to reopen the window or safely exit with complete journal restoration.
+  - Native autostart support across platforms.
 
 ---
 
-## 📐 Clean Architecture & Project Structure
+## 📐 Architecture & Project Structure
 
-The codebase is organized following **Clean Architecture (Domain-Driven Design + Strategy Pattern)**:
+PrivGvard follows **Clean Architecture** with a clear separation of concerns:
 
 ```text
-PrivLock/
-├── src/
-│   ├── PrivLock.Domain/                  # Pure C# domain models, capabilities, and value objects
-│   ├── PrivLock.Platform.Abstractions/   # Platform contracts (IDeviceProtectionProvider, IDeviceDetector, etc.)
-│   ├── PrivLock.Infrastructure.Common/   # Cross-platform JSON state store, Serilog logging, CrashReporter
-│   ├── PrivLock.Application/             # Orchestration services (ProtectionService, Settings, Localization)
-│   ├── PrivLock.Platform.Windows/        # Windows CfgMgr32 PnP, WMI GUIDs, HKLM Registry policies, on-demand UAC
-│   ├── PrivLock.Platform.Linux/          # Linux V4L2 device nodes, PipeWire/PulseAudio source control
-│   ├── PrivLock.Platform.MacOS/          # macOS CoreAudio HAL input mute, AVFoundation, LaunchAgents
-│   ├── PrivLock.UI/                      # Multiplatform Avalonia UI 11 Views & ViewModels
-│   └── PrivLock.Desktop/                 # Single Executable Host & Platform Dependency Injection
-│
-├── tests/
-│   ├── PrivLock.Domain.Tests/            # Domain unit tests
-│   ├── PrivLock.Infrastructure.Tests/    # Storage, crash reporting & localization tests
-│   ├── PrivLock.Application.Tests/       # Orchestration, on-demand elevation & business logic tests
-│   └── PrivLock.Platform.Windows.Tests/  # Windows platform tests
-│
-├── legacy/                               # Quarantined archived PrivLock 1.x implementation & tests (build-guarded)
-│   ├── CamMicBlocker/
-│   └── tests/CamMicBlocker.Tests/
-│
-└── .github/workflows/
-    └── ci.yml                            # GitHub Actions CI matrix (Windows, Ubuntu, macOS)
+src/
+├── PrivLock.Domain/                  # Pure C# domain models, capabilities, and value objects
+├── PrivLock.Platform.Abstractions/   # Platform contracts (IDeviceProtectionProvider, IDeviceDetector, etc.)
+├── PrivLock.Infrastructure.Common/   # Cross-platform JSON storage, Serilog logging, CrashReporter
+├── PrivLock.Application/             # Orchestration services (ProtectionService, Settings, Localization)
+├── PrivLock.Platform.Windows/        # Windows CfgMgr32 PnP, AppPrivacy policies, Core Audio, on-demand UAC
+├── PrivLock.Platform.Linux/          # Linux V4L2 device discovery and experimental controller scaffold
+├── PrivLock.Platform.MacOS/          # macOS CoreAudio HAL discovery and experimental controller scaffold
+├── PrivLock.UI/                      # Multiplatform Avalonia UI 11 Views & ViewModels
+└── PrivLock.Desktop/                 # Single executable host (produces PrivGvard.exe / PrivGvard)
+
+tests/
+├── PrivLock.Domain.Tests/            # Domain unit tests (cross-platform)
+├── PrivLock.Infrastructure.Tests/    # Storage, crash reporting & localization tests (cross-platform)
+├── PrivLock.Application.Tests/       # Orchestration & recovery tests (cross-platform)
+└── PrivLock.Platform.Windows.Tests/  # Windows native PnP, registry, audio & IPC tests
+
+legacy/                               # Quarantined archived PrivLock 1.x WPF codebase (build-guarded)
+├── CamMicBlocker/
+└── tests/CamMicBlocker.Tests/
 ```
 
 ---
@@ -137,9 +134,12 @@ cd PrivGvard
 dotnet build CamMicBlocker.sln
 ```
 
-### 2. Run Test Suite (171 tests in the current local baseline)
+### 2. Run Active Test Suite
 ```powershell
+# Run all tests on Windows:
 dotnet test CamMicBlocker.sln
+
+# See CI for current passing test count and cross-platform execution.
 ```
 
 ### 3. Run Application (Debug)
@@ -164,15 +164,19 @@ dotnet publish src/PrivLock.Desktop/PrivLock.Desktop.csproj -c Release -r osx-ar
 
 ## 🛡️ Security & Observability
 
-- **Least Privilege Architecture**: Runs with standard user permissions by default (`asInvoker`), elevating privileges transiently only during an authorized Windows operation.
+- **Least Privilege Architecture**: Runs standard user permissions by default (`asInvoker`), elevating privileges transiently only during authorized operations.
 - **Structured Diagnostic Logs**:
-  - Windows: `%LOCALAPPDATA%\PrivGvard\Logs\PrivGvard-yyyyMMdd.log` (automatically migrates legacy `%LOCALAPPDATA%\PrivLock`)
-  - Linux: `~/.local/share/PrivGvard/Logs/privgvard-yyyyMMdd.log`
-  - macOS: `~/Library/Application Support/PrivGvard/Logs/privgvard-yyyyMMdd.log`
+  - Windows: `%LOCALAPPDATA%\PrivGvard\Logs\PrivGvard-yyyyMMdd.log` (automatically migrates legacy `%LOCALAPPDATA%\PrivLock`).
+  - Linux: `~/.local/share/PrivGvard/Logs/PrivGvard-yyyyMMdd.log`.
+  - macOS: `~/Library/Application Support/PrivGvard/Logs/PrivGvard-yyyyMMdd.log`.
 - **Post-Mortem Crash Reports**: Structured JSON reports generated in `.../PrivGvard/CrashReports/` on unhandled exceptions.
-- **Fail-Secure Architecture**: The application must not report a device as protected without a fresh effective-state observation. Windows has the current recovery-backed path; Linux/macOS remain unsupported for production privacy mutation.
+- **Fail-Secure Architecture**: The application never reports a device as protected without a fresh native effective-state verification (`EffectiveStatus`).
 
-For the full audit, capability matrix and staged roadmap, see [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md) and [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md).
+For detailed technical context, recovery validation, and architectural guidelines, see:
+- [docs/ai/PROJECT_CONTEXT.md](docs/ai/PROJECT_CONTEXT.md) (Canonical OKF)
+- [AGENTS.md](AGENTS.md) (Engineering and safety rules)
+- [docs/ai/AUDIT-ROADMAP.md](docs/ai/AUDIT-ROADMAP.md) (Roadmap and audit findings)
+- [docs/recovery-validation.md](docs/recovery-validation.md) (Recovery validation methodology)
 
 ---
 
