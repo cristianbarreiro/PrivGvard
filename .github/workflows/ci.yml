@@ -1,4 +1,4 @@
-name: PrivLock CI/CD — Multiplatform Matrix
+name: PrivGvard CI/CD — Multiplatform Matrix
 
 on:
   push:
@@ -30,8 +30,18 @@ jobs:
     - name: Build Solution
       run: dotnet build CamMicBlocker.sln -c Release --no-restore
 
-    - name: Run Tests (Cross-Platform)
-      run: dotnet test CamMicBlocker.sln -c Release --no-build --verbosity normal
+    - name: Run Domain Tests (Cross-Platform)
+      run: dotnet test tests/PrivLock.Domain.Tests/PrivLock.Domain.Tests.csproj -c Release --no-build --verbosity normal
+
+    - name: Run Application Tests (Cross-Platform)
+      run: dotnet test tests/PrivLock.Application.Tests/PrivLock.Application.Tests.csproj -c Release --no-build --verbosity normal
+
+    - name: Run Infrastructure Tests (Cross-Platform)
+      run: dotnet test tests/PrivLock.Infrastructure.Tests/PrivLock.Infrastructure.Tests.csproj -c Release --no-build --verbosity normal
+
+    - name: Run Windows Platform Tests
+      if: runner.os == 'Windows'
+      run: dotnet test tests/PrivLock.Platform.Windows.Tests/PrivLock.Platform.Windows.Tests.csproj -c Release --no-build --verbosity normal
 
   publish-artifacts:
     name: Publish Single-File (${{ matrix.target.rid }})
@@ -41,10 +51,10 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - { os: windows-latest, rid: win-x64, name: PrivLock-Windows-x64.exe }
-          - { os: windows-latest, rid: win-arm64, name: PrivLock-Windows-arm64.exe }
-          - { os: ubuntu-latest, rid: linux-x64, name: PrivLock-Linux-x64 }
-          - { os: macos-latest, rid: osx-arm64, name: PrivLock-macOS-arm64 }
+          - { os: windows-latest, rid: win-x64, name: PrivGvard-win-x64.exe }
+          - { os: windows-latest, rid: win-arm64, name: PrivGvard-win-arm64.exe }
+          - { os: ubuntu-latest, rid: linux-x64, name: PrivGvard-linux-x64 }
+          - { os: macos-latest, rid: osx-arm64, name: PrivGvard-osx-arm64 }
 
     steps:
     - name: Checkout Repository
@@ -68,5 +78,5 @@ jobs:
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: PrivLock-${{ matrix.target.rid }}
+        name: PrivGvard-${{ matrix.target.rid }}
         path: publish_out/${{ matrix.target.rid }}/*
