@@ -1,13 +1,17 @@
-# CamMicBlocker — Project Guidelines & Security Rules
+# PrivLock — Project Guidelines & Security Rules
 
-Refer to the primary project documentation in `AGENTS.md` at the workspace root for complete architectural guidelines, build instructions, 9-point risk assessment checklists, and security policies.
+Refer to the primary project documentation in `AGENTS.md` at the workspace root for complete architectural guidelines, build instructions, 9-point risk assessment checklists, capabilities matrix, and security policies.
 
-## Quick Summary
-- Target: .NET 10 / WPF
-- Security Policy: Official Windows APIs only (`CfgMgr32.dll` PnP & HKLM AppPrivacy). No hardware firmware modification, low-level registry hacks, or UAC bypasses.
-- Elevation: `requireAdministrator` in `app.manifest` (single-UAC prompt on startup).
-- PnP Control: In-process CfgMgr32 P/Invoke (`DeviceController.cs`).
-- Registry Control: In-process HKLM AppPrivacy (`PolicyManager.cs`).
-- Detection: Class GUID WMI queries (`{ca3e7ab9-b4c3-4ae6-8251-579ef933890f}` for cameras, `{c166523c-fe0c-4a94-a586-f1a80cfbbf3e}` with `{0.0.1.` for mic capture).
-- Logging: Serilog + CrashReporter in `%LOCALAPPDATA%\CamMicBlocker\`.
-- Localization: Dynamic XAML ResourceDictionaries (`Strings.es.xaml` / `Strings.en.xaml`).
+## Quick Architecture Summary
+- **Single Application Model**: One single binary (`PrivLock.exe` / `PrivLock`) running as standard user (`asInvoker`). No separate elevated executable.
+- **Dynamic On-Demand Elevation**: Administrative rights requested strictly at the moment a privileged operation is executed (via short-lived self-invocation `--privileged-exec`), or directly in-process if already elevated.
+- **Target**: .NET 10 / C# (Cross-Platform)
+- **UI Framework**: Avalonia UI 11+ (Fluent Dark Theme, System Tray, Custom Window Chrome)
+- **Architecture**: Clean Architecture (Domain, Platform.Abstractions, Infrastructure.Common, Application, Native Platform Adapters, Avalonia UI, Desktop Host)
+- **Platform Implementations**:
+  - **Windows**: `CfgMgr32.dll` PnP Hardware Controller + `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy` Group Policies + WMI GUID Detection.
+  - **Linux**: V4L2/sysfs device node control & ACLs + PipeWire (`wpctl`) / PulseAudio (`pactl`) sound server source lock + Polkit (`pkexec`).
+  - **macOS**: CoreAudio HAL Hardware Input Mute (`AudioObjectSetPropertyData`) + AVFoundation state inspection + LaunchAgents plist.
+- **Security & Capabilities**: Declarative `PlatformCapabilities` (honest security reporting, fail securely, verified state).
+- **Logging & Diagnostics**: Serilog rolling logs + structured JSON crash reports in `%LOCALAPPDATA%\PrivLock\` (Windows), `~/.local/share/PrivLock/` (Linux), `~/Library/Application Support/PrivLock/` (macOS).
+- **Localization**: Pure C# `LocalizationCatalog` (`StringsEn`/`StringsEs`) with dynamic UI binding.

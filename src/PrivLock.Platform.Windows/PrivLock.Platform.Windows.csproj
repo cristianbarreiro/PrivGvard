@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PrivLock.Platform.Windows</RootNamespace>
+    <AssemblyName>PrivLock.Platform.Windows</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrivLock.Domain\PrivLock.Domain.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.Abstractions\PrivLock.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\PrivLock.Infrastructure.Common\PrivLock.Infrastructure.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PrivLock.Platform.Windows.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,104 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PrivLock.UI.App"
+             RequestedThemeVariant="Dark">
+    <Application.Styles>
+        <FluentTheme />
+
+        <!-- Card / Panel Styling -->
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="#252528" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="Margin" Value="0" />
+        </Style>
+
+        <!-- Accent ToggleSwitch Styling -->
+        <Style Selector="ToggleSwitch">
+            <Setter Property="OnContent" Value="" />
+            <Setter Property="OffContent" Value="" />
+        </Style>
+
+        <!-- Segmented Pill Button Styling -->
+        <Style Selector="Button.pill">
+            <Setter Property="Background" Value="#2C2C30" />
+            <Setter Property="Foreground" Value="#CCCCCC" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#38383C" />
+        </Style>
+        <Style Selector="Button.pill.active">
+            <Setter Property="Background" Value="#007ACC" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#0098FF" />
+        </Style>
+
+        <!-- Menu Flyout Styling -->
+        <Style Selector="MenuFlyoutPresenter">
+            <Setter Property="Background" Value="#202024" />
+            <Setter Property="BorderBrush" Value="#35353A" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="#EEEEEE" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+
+        <!-- Title Bar Window Control Buttons (Rectangular Desktop Style) -->
+        <Style Selector="Button.titlebar-btn">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.titlebar-btn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#2A2A2E" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+        <Style Selector="Button.titlebar-btn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#35353A" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+
+        <Style Selector="Button.titlebar-close">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#AAAAAA" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.titlebar-close TextBlock">
+            <Setter Property="Foreground" Value="#AAAAAA" />
+        </Style>
+        <Style Selector="Button.titlebar-close:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#E81123" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+        <Style Selector="Button.titlebar-close:pointerover TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.titlebar-close:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#B82214" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="CornerRadius" Value="0" />
+        </Style>
+        <Style Selector="Button.titlebar-close:pressed TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+    </Application.Styles>
+</Application>

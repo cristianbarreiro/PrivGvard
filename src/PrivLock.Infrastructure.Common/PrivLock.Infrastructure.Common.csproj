@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PrivLock.Infrastructure.Common</RootNamespace>
+    <AssemblyName>PrivLock.Infrastructure.Common</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrivLock.Domain\PrivLock.Domain.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.Abstractions\PrivLock.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,11 +1,11 @@
 # Copyright & Licensing Notice
 
-## PrivLock — Camera & Microphone Blocker for Windows
+## PrivGvard — Camera & Microphone Blocker for Windows
 
 ```text
-PrivLock — Camera & Microphone Blocker for Windows
+PrivGvard — Camera & Microphone Blocker for Windows
 Copyright (C) 2026 Cristian Barreiro
-Repository: https://github.com/cristianbarreiro/PrivLock.git
+Repository: https://github.com/cristianbarreiro/PrivGvard.git
 ```
 
 ---
@@ -46,7 +46,7 @@ All source files in this repository should include the following header notice a
 
 ## Third-Party Dependencies & Compatibility Notice
 
-PrivLock relies on the following third-party components and standard libraries, which are redistributed or linked in accordance with their respective open-source licenses:
+PrivGvard relies on the following third-party components and standard libraries, which are redistributed or linked in accordance with their respective open-source licenses:
 
 | Component / Dependency | License | Project / Home URL |
 | :--- | :--- | :--- |
@@ -54,5 +54,6 @@ PrivLock relies on the following third-party components and standard libraries, 
 | **Serilog** | Apache License 2.0 | [serilog/serilog](https://github.com/serilog/serilog) |
 | **Serilog.Sinks.File** | Apache License 2.0 | [serilog/serilog-sinks-file](https://github.com/serilog/serilog-sinks-file) |
 | **xUnit** | Apache License 2.0 | [xunit/xunit](https://github.com/xunit/xunit) |
+| **Comfortaa Font** | SIL Open Font License 1.1 | [google/fonts](https://fonts.google.com/specimen/Comfortaa) |
 
 All listed dependencies use permissive open-source licenses (MIT, Apache 2.0) that are fully compatible with the GNU General Public License v3.0 (GPL-3.0).

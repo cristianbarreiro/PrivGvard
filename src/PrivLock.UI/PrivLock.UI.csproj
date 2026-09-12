@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PrivLock.UI</RootNamespace>
+    <AssemblyName>PrivLock.UI</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.3" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.3" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Serilog" Version="3.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrivLock.Domain\PrivLock.Domain.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.Abstractions\PrivLock.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\PrivLock.Infrastructure.Common\PrivLock.Infrastructure.Common.csproj" />
+    <ProjectReference Include="..\PrivLock.Application\PrivLock.Application.csproj" />
+  </ItemGroup>
+
+</Project>

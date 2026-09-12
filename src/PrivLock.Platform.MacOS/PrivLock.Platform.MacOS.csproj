@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PrivLock.Platform.MacOS</RootNamespace>
+    <AssemblyName>PrivLock.Platform.MacOS</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="3.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrivLock.Domain\PrivLock.Domain.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.Abstractions\PrivLock.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\PrivLock.Infrastructure.Common\PrivLock.Infrastructure.Common.csproj" />
+  </ItemGroup>
+
+</Project>

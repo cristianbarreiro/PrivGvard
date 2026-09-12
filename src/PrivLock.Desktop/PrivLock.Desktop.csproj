@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PrivLock.Desktop</RootNamespace>
+    <AssemblyName>PrivGvard</AssemblyName>
+    <Product>PrivGvard</Product>
+    <Title>PrivGvard</Title>
+    <Description>PrivGvard - Camera &amp; Microphone Privacy Guard</Description>
+    <Company>cdev Studio</Company>
+    <Copyright>© 2026 cdev Studio. All rights reserved.</Copyright>
+    <ApplicationManifest Condition="$([MSBuild]::IsOSPlatform('Windows'))">app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="$([MSBuild]::IsOSPlatform('Windows'))">Assets\app.ico</ApplicationIcon>
+    <!-- Avalonia's UsePlatformDetect() discovers windowing backends (Avalonia.Win32.dll, etc.) via
+         assembly scanning. In .NET 10 single-file mode managed assemblies are loaded from the
+         in-memory bundle without disk extraction, which breaks this discovery and causes a
+         PlatformNotSupportedException in Dispatcher.MainLoop. Extracting all content restores
+         file-based assembly resolution that Avalonia requires. -->
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.94.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PrivLock.Domain\PrivLock.Domain.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.Abstractions\PrivLock.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\PrivLock.Infrastructure.Common\PrivLock.Infrastructure.Common.csproj" />
+    <ProjectReference Include="..\PrivLock.Application\PrivLock.Application.csproj" />
+    <ProjectReference Include="..\PrivLock.UI\PrivLock.UI.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.Windows\PrivLock.Platform.Windows.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.Linux\PrivLock.Platform.Linux.csproj" />
+    <ProjectReference Include="..\PrivLock.Platform.MacOS\PrivLock.Platform.MacOS.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PrivLock.Platform.Windows.Tests" />
+  </ItemGroup>
+
+</Project>
