@@ -60,7 +60,7 @@
                     <Button Classes="titlebar-close"
                             Width="44" Height="38" Background="Transparent" BorderThickness="0" CornerRadius="0"
                             Click="OnCloseClick" VerticalContentAlignment="Center" HorizontalContentAlignment="Center">
-                        <TextBlock Text="✕" FontSize="12" Foreground="#AAAAAA" />
+                        <TextBlock Text="✕" FontSize="12" />
                     </Button>
                 </StackPanel>
             </Grid>
