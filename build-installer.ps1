@@ -159,7 +159,7 @@ if (-not (Test-Path -LiteralPath $InstallerOutDir)) { New-Item -ItemType Directo
 
 # 2. Run Unit Tests
 Write-Host "`n[2/5] Running unit test suite..." -ForegroundColor Yellow
-dotnet test "$ProjectRoot\CamMicBlocker.sln" --configuration Release
+dotnet test "$ProjectRoot\PrivGvard.sln" --configuration Release
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Unit tests failed! Aborting installer build."
     exit 1

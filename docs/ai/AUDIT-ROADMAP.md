@@ -12,7 +12,7 @@
 Se revisaron:
 
 - `AGENTS.md`, `README.md` y `docs/recovery-validation.md`.
-- La solución `CamMicBlocker.sln`, el host `src/PrivLock.Desktop` y la composición de dependencias.
+- La solución `PrivGvard.sln` (renombrada desde `CamMicBlocker.sln`), el host `src/PrivLock.Desktop` y la composición de dependencias.
 - Servicios de aplicación, modelos de estado, almacenamiento, journal/recovery y cierre coordinado.
 - Proveedores Windows, Linux y macOS, con especial atención a cualquier mutación del sistema.
 - Tests, workflow de CI y la separación del árbol heredado `src/CamMicBlocker`.
@@ -21,8 +21,8 @@ Se revisaron:
 Comandos de validación ejecutados:
 
 ```text
-dotnet build CamMicBlocker.sln --no-restore       -> correcto, 0 advertencias, 0 errores
-dotnet test CamMicBlocker.sln --no-restore        -> 156 correctas, 0 errores, 0 omitidas
+dotnet build PrivGvard.sln --no-restore       -> correcto, 0 advertencias, 0 errores
+dotnet test PrivGvard.sln --no-restore        -> 156 correctas, 0 errores, 0 omitidas
 ```
 
 El primer `dotnet build` con restore se ejecutó en paralelo con `dotnet test` y recibió un bloqueo temporal de `NuGetScratch`. No se considera un fallo del producto porque la compilación serial sin restore terminó correctamente.

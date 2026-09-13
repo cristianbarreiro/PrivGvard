@@ -149,12 +149,12 @@ src/
 
 ### Restore & Build Solution
 ```powershell
-dotnet build CamMicBlocker.sln
+dotnet build PrivGvard.sln
 ```
 
 ### Run Full Test Suite (156 Tests at the 2026-09-06 Baseline)
 ```powershell
-dotnet test CamMicBlocker.sln
+dotnet test PrivGvard.sln
 ```
 
 ### Run Application (Debug)

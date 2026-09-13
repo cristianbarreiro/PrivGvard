@@ -16,7 +16,7 @@ target_platforms: [Windows, Linux, macOS]
 
 PrivGvard is intended to be a transparent, reversible privacy utility for controlling access to a user's camera and microphone on Windows, Linux and macOS. The product must improve user control without modifying firmware, device registers, kernel binaries, security bypasses or undocumented hardware state.
 
-The requested product name is **PrivGvard**. The current repository is still named `Cam&MicroBlocker`, the solution is `CamMicBlocker.sln`, namespaces and assemblies use `PrivLock`, and the Windows executable is `PrivLock.dll`/`PrivLock.exe` depending on build output. This naming mismatch is a documentation and branding migration item, not an instruction to rename code automatically.
+The requested product name is **PrivGvard**. The current repository is still named `Cam&MicroBlocker`, the solution is `PrivGvard.sln`, namespaces and assemblies use `PrivLock`, and the Windows executable is `PrivLock.dll`/`PrivLock.exe` depending on build output. This naming mismatch is a documentation and branding migration item, not an instruction to rename code automatically.
 
 ## 2. Current verified state
 
@@ -36,7 +36,7 @@ The requested product name is **PrivGvard**. The current repository is still nam
 - **LEGACY**: `legacy/CamMicBlocker` (archived PrivLock 1.x implementation with build guard).
 - **NORMAL BUILDS MUST NEVER BUILD LEGACY CODE.**
 
-The current build succeeds with `dotnet build CamMicBlocker.sln --no-restore`. A concurrent restore attempt can fail because of a NuGet scratch-lock collision; that is an environment/parallelism issue and must not be reported as a product code failure without reproducing a serialized restore.
+The current build succeeds with `dotnet build PrivGvard.sln --no-restore`. A concurrent restore attempt can fail because of a NuGet scratch-lock collision; that is an environment/parallelism issue and must not be reported as a product code failure without reproducing a serialized restore.
 
 ## 3. Architecture map
 

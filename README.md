@@ -134,12 +134,12 @@ PrivLock/
 ```powershell
 git clone https://github.com/cristianbarreiro/PrivGvard.git
 cd PrivGvard
-dotnet build CamMicBlocker.sln
+dotnet build PrivGvard.sln
 ```
 
 ### 2. Run Test Suite (171 tests in the current local baseline)
 ```powershell
-dotnet test CamMicBlocker.sln
+dotnet test PrivGvard.sln
 ```
 
 ### 3. Run Application (Debug)
