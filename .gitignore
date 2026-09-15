@@ -71,3 +71,10 @@ Desktop.ini
 ejecutar.bat
 .DS_Store
 *.tmp
+
+# Certificates and Signing Keys
+*.pfx
+*.p12
+certificates/
+
+
