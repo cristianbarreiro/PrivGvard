@@ -168,11 +168,11 @@ public partial class App : Avalonia.Application
 
             var nativeMenu = new NativeMenu();
 
-            var openTitle = _localizationService?.GetString("Tray.Open") ?? "Abrir / Open PrivGvard";
+            var openTitle = _localizationService?.GetString("TrayOpen", "Abrir PrivGvard") ?? "Abrir PrivGvard";
             _trayOpenItem = new NativeMenuItem(openTitle);
             _trayOpenItem.Click += (_, _) => ShowMainWindow();
 
-            var exitTitle = _localizationService?.GetString("Tray.Exit") ?? "Salir / Exit";
+            var exitTitle = _localizationService?.GetString("TrayExit", "Salir") ?? "Salir";
             _trayExitItem = new NativeMenuItem(exitTitle);
             _trayExitItem.Click += (_, _) =>
                 _ = RequestShutdownAsync(desktop, "TrayExit", allowIncomplete: false);
@@ -216,11 +216,11 @@ public partial class App : Avalonia.Application
         Dispatcher.UIThread.Post(() =>
         {
             if (_trayOpenItem != null && _localizationService != null)
-                _trayOpenItem.Header = _localizationService.GetString("Tray.Open");
+                _trayOpenItem.Header = _localizationService.GetString("TrayOpen", "Abrir PrivGvard");
             if (_trayExitItem != null && _localizationService != null)
-                _trayExitItem.Header = _localizationService.GetString("Tray.Exit");
+                _trayExitItem.Header = _localizationService.GetString("TrayExit", "Salir");
             if (_trayIcon != null && _localizationService != null)
-                _trayIcon.ToolTipText = _localizationService.GetString("Tray.ToolTip");
+                _trayIcon.ToolTipText = _localizationService.GetString("Tray.ToolTip", "PrivGvard - Bloqueador de Cámara y Micrófono");
         });
     }
 

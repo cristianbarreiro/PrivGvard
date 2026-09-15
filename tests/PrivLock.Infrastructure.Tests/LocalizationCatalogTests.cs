@@ -54,4 +54,21 @@ public class LocalizationCatalogTests
         var result = LocalizationCatalog.Get(key, lang);
         Assert.Equal(expected, result);
     }
+
+    [Theory]
+    [InlineData("es", "TrayOpen", "Abrir PrivGvard")]
+    [InlineData("en", "TrayOpen", "Open PrivGvard")]
+    [InlineData("es", "Tray.Open", "Abrir PrivGvard")]
+    [InlineData("en", "Tray.Open", "Open PrivGvard")]
+    [InlineData("es", "TrayExit", "Salir")]
+    [InlineData("en", "TrayExit", "Exit")]
+    [InlineData("es", "Tray.Exit", "Salir")]
+    [InlineData("en", "Tray.Exit", "Exit")]
+    public void Get_TrayMenuKeys_ReturnCorrectTranslation(string lang, string key, string expected)
+    {
+        var result = LocalizationCatalog.Get(key, lang);
+        Assert.Equal(expected, result);
+        Assert.NotEqual("Tray.Open", result);
+        Assert.NotEqual("Tray.Exit", result);
+    }
 }
