@@ -21,6 +21,40 @@ if (-not (Test-Path -LiteralPath $OutputDir)) {
 
 $sourceImg = [System.Drawing.Image]::FromFile($SourceLogoPath)
 
+# Bounding box of the PrivGvard emblem in the 1024x1024 master image:
+# minX = 50, minY = 50, maxX = 973, maxY = 973 -> 924x924 px
+$SymbolSrcRect = New-Object System.Drawing.Rectangle(50, 50, 924, 924)
+
+function Resize-IconSymbol {
+    param (
+        [System.Drawing.Image]$Source,
+        [int]$TargetWidth,
+        [int]$TargetHeight,
+        [string]$DestinationPath,
+        [float]$PaddingRatio = 0.04 # 4% optical padding for anti-aliasing margin
+    )
+
+    $bmp = New-Object System.Drawing.Bitmap($TargetWidth, $TargetHeight, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $g.Clear([System.Drawing.Color]::Transparent)
+
+    $margin = [Math]::Max(1, [int][Math]::Round($TargetWidth * $PaddingRatio))
+    $destWidth = $TargetWidth - (2 * $margin)
+    $destHeight = $TargetHeight - (2 * $margin)
+    $destRect = New-Object System.Drawing.Rectangle($margin, $margin, $destWidth, $destHeight)
+
+    $g.DrawImage($Source, $destRect, $SymbolSrcRect, [System.Drawing.GraphicsUnit]::Pixel)
+    $g.Dispose()
+
+    $bmp.Save($DestinationPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $bmp.Dispose()
+    Write-Host "Generated: $([System.IO.Path]::GetFileName($DestinationPath)) ($($TargetWidth)x$($TargetHeight))" -ForegroundColor DarkGray
+}
+
 function Resize-ImageCentered {
     param (
         [System.Drawing.Image]$Source,
@@ -59,18 +93,23 @@ function Resize-ImageCentered {
 
 Write-Host "Generating Store visual assets from: $SourceLogoPath" -ForegroundColor Cyan
 
-# 1. Square44x44
-Resize-ImageCentered $sourceImg 44 44 (Join-Path $OutputDir "Square44x44Logo.png")
-Resize-ImageCentered $sourceImg 44 44 (Join-Path $OutputDir "Square44x44Logo.scale-100.png")
-Resize-ImageCentered $sourceImg 55 55 (Join-Path $OutputDir "Square44x44Logo.scale-125.png")
-Resize-ImageCentered $sourceImg 66 66 (Join-Path $OutputDir "Square44x44Logo.scale-150.png")
-Resize-ImageCentered $sourceImg 88 88 (Join-Path $OutputDir "Square44x44Logo.scale-200.png")
-Resize-ImageCentered $sourceImg 176 176 (Join-Path $OutputDir "Square44x44Logo.scale-400.png")
-Resize-ImageCentered $sourceImg 16 16 (Join-Path $OutputDir "Square44x44Logo.targetsize-16.png")
-Resize-ImageCentered $sourceImg 24 24 (Join-Path $OutputDir "Square44x44Logo.targetsize-24.png")
-Resize-ImageCentered $sourceImg 32 32 (Join-Path $OutputDir "Square44x44Logo.targetsize-32.png")
-Resize-ImageCentered $sourceImg 48 48 (Join-Path $OutputDir "Square44x44Logo.targetsize-48.png")
-Resize-ImageCentered $sourceImg 256 256 (Join-Path $OutputDir "Square44x44Logo.targetsize-256.png")
+# 1. Square44x44 - App list, taskbar, task switcher, search, shortcuts
+# Scale-based variants (for Start menu and general scale contexts)
+Resize-IconSymbol $sourceImg 44 44 (Join-Path $OutputDir "Square44x44Logo.png")
+Resize-IconSymbol $sourceImg 44 44 (Join-Path $OutputDir "Square44x44Logo.scale-100.png")
+Resize-IconSymbol $sourceImg 55 55 (Join-Path $OutputDir "Square44x44Logo.scale-125.png")
+Resize-IconSymbol $sourceImg 66 66 (Join-Path $OutputDir "Square44x44Logo.scale-150.png")
+Resize-IconSymbol $sourceImg 88 88 (Join-Path $OutputDir "Square44x44Logo.scale-200.png")
+Resize-IconSymbol $sourceImg 176 176 (Join-Path $OutputDir "Square44x44Logo.scale-400.png")
+
+# Targetsize variants (for Taskbar, Desktop shortcuts, Task Switcher, Start all-apps list)
+# Generates plated, unplated (_altform-unplated), and light-unplated (_altform-lightunplated) assets
+$targetSizes = @(16, 20, 24, 30, 32, 36, 40, 48, 60, 64, 72, 80, 96, 256)
+foreach ($size in $targetSizes) {
+    Resize-IconSymbol $sourceImg $size $size (Join-Path $OutputDir "Square44x44Logo.targetsize-$size.png")
+    Resize-IconSymbol $sourceImg $size $size (Join-Path $OutputDir "Square44x44Logo.targetsize-${size}_altform-unplated.png")
+    Resize-IconSymbol $sourceImg $size $size (Join-Path $OutputDir "Square44x44Logo.targetsize-${size}_altform-lightunplated.png")
+}
 
 # 2. Square71x71
 Resize-ImageCentered $sourceImg 71 71 (Join-Path $OutputDir "Square71x71Logo.png")

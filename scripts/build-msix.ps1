@@ -119,10 +119,11 @@ Write-Host "Publisher:          $Publisher" -ForegroundColor White
 Write-Host "Target Arch:        $Architecture" -ForegroundColor White
 
 # ---------------------------------------------------------------------
-# 2. Locate Windows SDK Tools (MakeAppx & SignTool)
+# 2. Locate Windows SDK Tools (MakeAppx, MakePri & SignTool)
 # ---------------------------------------------------------------------
 $WindowsKitsBin = "C:\Program Files (x86)\Windows Kits\10\bin"
 $MakeAppxPath = $null
+$MakePriPath = $null
 $SignToolPath = $null
 
 if (Test-Path -LiteralPath $WindowsKitsBin) {
@@ -133,6 +134,14 @@ if (Test-Path -LiteralPath $WindowsKitsBin) {
 
     if ($makeAppxFiles -and $makeAppxFiles.Count -gt 0) {
         $MakeAppxPath = $makeAppxFiles[0].FullName
+    }
+
+    $makePriFiles = Get-ChildItem -Path $WindowsKitsBin -Filter "makepri.exe" -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -like "*\x64\makepri.exe" } |
+        Sort-Object FullName -Descending
+
+    if ($makePriFiles -and $makePriFiles.Count -gt 0) {
+        $MakePriPath = $makePriFiles[0].FullName
     }
 
     $signToolFiles = Get-ChildItem -Path $WindowsKitsBin -Filter "signtool.exe" -Recurse -ErrorAction SilentlyContinue |
@@ -148,7 +157,12 @@ if (-not $MakeAppxPath) {
     throw "MakeAppx.exe was not found in Windows Kits. Please install the Windows 10/11 SDK."
 }
 
+if (-not $MakePriPath) {
+    throw "MakePri.exe was not found in Windows Kits. Please install the Windows 10/11 SDK."
+}
+
 Write-Host "Using MakeAppx:     $MakeAppxPath" -ForegroundColor DarkGray
+Write-Host "Using MakePri:      $MakePriPath" -ForegroundColor DarkGray
 if ($SignPackage -or $CreateSelfSignedCert) {
     if (-not $SignToolPath) {
         throw "SignTool.exe was not found in Windows Kits. Please install the Windows 10/11 SDK."
@@ -159,8 +173,9 @@ if ($SignPackage -or $CreateSelfSignedCert) {
 # ---------------------------------------------------------------------
 # 3. Ensure Visual Assets Exist
 # ---------------------------------------------------------------------
-if (-not (Test-Path -LiteralPath $AssetsSourceDir) -or (Get-ChildItem -Path $AssetsSourceDir -Filter "*.png").Count -eq 0) {
-    Write-Host "`nGenerating missing Store visual assets..." -ForegroundColor Yellow
+$unplatedSample = Join-Path $AssetsSourceDir "Square44x44Logo.targetsize-48_altform-unplated.png"
+if (-not (Test-Path -LiteralPath $AssetsSourceDir) -or -not (Test-Path -LiteralPath $unplatedSample)) {
+    Write-Host "`nGenerating missing or updated Store visual assets..." -ForegroundColor Yellow
     & "$PSScriptRoot\generate-store-assets.ps1"
 }
 
@@ -227,6 +242,33 @@ foreach ($arch in $architecturesToBuild) {
         Remove-Item -LiteralPath $targetAssetsDir -Recurse -Force
     }
     Copy-Item -Path $AssetsSourceDir -Destination $stagingDir -Recurse -Force
+
+    # Generate resources.pri using MakePri
+    Write-Host "`n Generating resources.pri for $arch..." -ForegroundColor Yellow
+    $priconfigPath = Join-Path $stagingDir "priconfig.xml"
+    & $MakePriPath createconfig /cf $priconfigPath /dq en-US /pv 10.0.0 /o
+    if ($LASTEXITCODE -ne 0) {
+        throw "MakePri.exe createconfig failed!"
+    }
+
+    # Remove <packaging> auto-split section so that all scale and unplated targetsize assets
+    # are indexed into a single monolithic resources.pri inside the main package.
+    [xml]$configXml = Get-Content -LiteralPath $priconfigPath -Raw
+    if ($configXml.resources.packaging) {
+        $configXml.resources.RemoveChild($configXml.resources.packaging) | Out-Null
+        $configXml.Save($priconfigPath)
+    }
+
+    $priPath = Join-Path $stagingDir "resources.pri"
+    & $MakePriPath new /pr $stagingDir /cf $priconfigPath /of $priPath /mn $targetManifestPath /o
+    if ($LASTEXITCODE -ne 0) {
+        throw "MakePri.exe new failed to compile resources.pri!"
+    }
+
+    # Clean up temporary priconfig.xml
+    if (Test-Path -LiteralPath $priconfigPath) {
+        Remove-Item -LiteralPath $priconfigPath -Force
+    }
 
     # Pack MSIX
     Write-Host "`n [3/3] Packaging MSIX container for $arch..." -ForegroundColor Yellow
