@@ -181,7 +181,7 @@ public partial class App : Avalonia.Application
             nativeMenu.Items.Add(new NativeMenuItemSeparator());
             nativeMenu.Items.Add(_trayExitItem);
 
-            var toolTip = _localizationService?.GetString("Tray.ToolTip") ?? "PrivGvard - Camera & Microphone Blocker";
+            var toolTip = _localizationService?.GetString("Tray.ToolTip", "PrivGvard - Bloqueador de Cámara y Micrófono") ?? "PrivGvard - Bloqueador de Cámara y Micrófono";
             _trayIcon = new TrayIcon
             {
                 ToolTipText = toolTip,
@@ -226,12 +226,23 @@ public partial class App : Avalonia.Application
 
     public void ShowMainWindow()
     {
-        if (_mainWindow == null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_mainWindow == null) return;
 
-        _mainWindow.Show();
-        _mainWindow.WindowState = WindowState.Normal;
-        _mainWindow.Activate();
-        _mainWindow.BringIntoView();
+            if (!_mainWindow.IsVisible)
+            {
+                _mainWindow.Show();
+            }
+
+            if (_mainWindow.WindowState == WindowState.Minimized)
+            {
+                _mainWindow.WindowState = WindowState.Normal;
+            }
+
+            _mainWindow.Activate();
+            _mainWindow.BringIntoView();
+        });
     }
 
     private static async Task ObserveOperatingSystemShutdownRestoreAsync(

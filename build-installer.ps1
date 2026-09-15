@@ -319,20 +319,20 @@ if (-not $SkipMsix) {
         exit 1
     }
 
-    $msixArgs = @(
-        "-Architecture", "x64",
-        "-Configuration", $Configuration
-    )
+    $msixParams = @{
+        Architecture = "x64"
+        Configuration = $Configuration
+    }
 
     if ($SignMsix) {
-        $msixArgs += "-SignPackage"
+        $msixParams["SignPackage"] = $true
         if ($CertificateThumbprint) {
-            $msixArgs += @("-CertificateThumbprint", $CertificateThumbprint)
+            $msixParams["CertificateThumbprint"] = $CertificateThumbprint
         }
     }
 
     try {
-        & $BuildMsixScript @msixArgs
+        & $BuildMsixScript @msixParams
         if ($LASTEXITCODE -ne 0) {
             Write-Error "MSIX packaging failed with exit code $LASTEXITCODE! Aborting release build."
             exit 1
