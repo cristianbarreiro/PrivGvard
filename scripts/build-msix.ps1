@@ -4,9 +4,10 @@
 
 .DESCRIPTION
     Compiles the PrivLock.Desktop project as a self-contained, loose-binary distribution (required for MSIX),
-    generates the AppxManifest.xml with appropriate architecture and publisher identity, packages visual assets,
-    and runs MakeAppx.exe from the Windows SDK. Optionally creates a self-signed certificate for local testing
-    or signs the package with SignTool.exe.
+    generates the AppxManifest.xml with appropriate architecture and publisher identity from the template manifest
+    packaging/Package.appxmanifest, packages visual assets, and runs MakeAppx.exe from the Windows SDK.
+    Enforces official Microsoft Store Partner Center identity when -ValidateStoreIdentity is specified.
+    Optionally creates a self-signed certificate for local testing or signs the package with SignTool.exe.
 
 .PARAMETER Architecture
     Target architecture: 'x64' (default), 'arm64', or 'all' (builds both and creates a bundle).
@@ -17,11 +18,21 @@
 .PARAMETER PackageVersion
     Four-part version (Major.Minor.Build.Revision). Defaults to reading PackageVersion from Directory.Build.props.
 
+.PARAMETER PackageName
+    Package identity name. If omitted, defaults to Identity/Name in packaging/Package.appxmanifest (cdevstudios.PrivGvard).
+
 .PARAMETER Publisher
-    Publisher distinguished name (e.g. "CN=cdev Studio, O=cdev Studio, C=US" or Partner Center Publisher ID).
+    Publisher distinguished name (e.g. "CN=85AB4167-A0AE-4FDF-B840-B95CD225F7DD" or a local dev certificate subject).
+    If omitted, defaults to Identity/Publisher in packaging/Package.appxmanifest.
 
 .PARAMETER PublisherDisplayName
-    Publisher display name shown in Store/UI. Defaults to "cdev Studio".
+    Publisher display name shown in Store and Windows UI. If omitted, defaults to Properties/PublisherDisplayName
+    in packaging/Package.appxmanifest (cdev studios).
+
+.PARAMETER ValidateStoreIdentity
+    Switch to strictly validate that the package identity matches Microsoft Store Partner Center requirements:
+    Name="cdevstudios.PrivGvard", Publisher="CN=85AB4167-A0AE-4FDF-B840-B95CD225F7DD", PublisherDisplayName="cdev studios".
+    Packaging fails immediately if any value differs.
 
 .PARAMETER CreateBundle
     Switch to generate a multi-architecture .msixbundle package.
@@ -46,15 +57,19 @@
 
 .EXAMPLE
     .\scripts\build-msix.ps1 -Architecture x64
-    Builds a Release x64 MSIX package.
+    Builds a Release x64 MSIX package using the template manifest identity.
 
 .EXAMPLE
-    .\scripts\build-msix.ps1 -Architecture all -CreateBundle
-    Builds both x64 and arm64 packages and packages them into a .msixbundle.
+    .\scripts\build-msix.ps1 -Architecture x64 -ValidateStoreIdentity
+    Builds a Release x64 MSIX package and validates Store identity compliance.
 
 .EXAMPLE
-    .\scripts\build-msix.ps1 -Architecture x64 -SignPackage -CreateSelfSignedCert
-    Builds and signs an x64 MSIX with a fresh self-signed test certificate for local sideload testing.
+    .\scripts\build-msix.ps1 -Architecture all -CreateBundle -ValidateStoreIdentity
+    Builds both x64 and arm64 packages with Store identity and packages them into a verified .msixbundle.
+
+.EXAMPLE
+    .\scripts\build-msix.ps1 -Architecture x64 -Publisher "CN=DevTest" -SignPackage -CreateSelfSignedCert
+    Builds and signs an x64 MSIX with an override publisher and a self-signed test certificate for local sideload testing.
 #>
 
 param (
@@ -66,9 +81,14 @@ param (
 
     [string]$PackageVersion,
 
-    [string]$Publisher = "CN=PrivGvard",
+    [string]$PackageName,
 
-    [string]$PublisherDisplayName = "PrivGvard",
+    [string]$Publisher,
+
+    [string]$PublisherDisplayName,
+
+    [Alias("Store")]
+    [switch]$ValidateStoreIdentity,
 
     [switch]$CreateBundle,
 
@@ -82,6 +102,8 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $ProjectRoot = [System.IO.Path]::GetFullPath("$PSScriptRoot\..")
 $PackagingSourceDir = Join-Path $ProjectRoot "packaging"
@@ -99,8 +121,53 @@ Write-Host " PrivGvard - MSIX Build and Packaging Pipeline" -ForegroundColor Cya
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # ---------------------------------------------------------------------
-# 1. Resolve Package Version
+# 1. Resolve Package Identity and Version from Template Manifest
 # ---------------------------------------------------------------------
+if (-not (Test-Path -LiteralPath $ManifestSourcePath)) {
+    throw "Manifest template not found at: $ManifestSourcePath"
+}
+
+[xml]$templateXml = Get-Content -LiteralPath $ManifestSourcePath -Raw
+
+if ([string]::IsNullOrWhiteSpace($PackageName)) {
+    $PackageName = $templateXml.Package.Identity.Name
+}
+
+if ([string]::IsNullOrWhiteSpace($Publisher)) {
+    $Publisher = $templateXml.Package.Identity.Publisher
+}
+
+if ([string]::IsNullOrWhiteSpace($PublisherDisplayName)) {
+    $PublisherDisplayName = $templateXml.Package.Properties.PublisherDisplayName
+}
+
+# Canonical Microsoft Store Partner Center identity constants
+$StoreRequiredName = "cdevstudios.PrivGvard"
+$StoreRequiredPublisher = "CN=85AB4167-A0AE-4FDF-B840-B95CD225F7DD"
+$StoreRequiredPublisherDisplayName = "cdev studios"
+
+if ($ValidateStoreIdentity) {
+    Write-Host "Validating Microsoft Store identity requirements..." -ForegroundColor Yellow
+    $identityErrors = @()
+    if ($PackageName -ne $StoreRequiredName) {
+        $identityErrors += "  - Identity/Name mismatch: expected '$StoreRequiredName', got '$PackageName'"
+    }
+    if ($Publisher -ne $StoreRequiredPublisher) {
+        $identityErrors += "  - Identity/Publisher mismatch: expected '$StoreRequiredPublisher', got '$Publisher'"
+    }
+    if ($PublisherDisplayName -ne $StoreRequiredPublisherDisplayName) {
+        $identityErrors += "  - Properties/PublisherDisplayName mismatch: expected '$StoreRequiredPublisherDisplayName', got '$PublisherDisplayName'"
+    }
+
+    if ($identityErrors.Count -gt 0) {
+        $errorMsg = "Store identity validation failed! Package does not match Microsoft Partner Center requirements:`n" +
+            ($identityErrors -join "`n") + "`n" +
+            "To build for local development or testing with custom identity, omit -ValidateStoreIdentity."
+        throw $errorMsg
+    }
+    Write-Host "Store identity validation: PASS" -ForegroundColor Green
+}
+
 if ([string]::IsNullOrWhiteSpace($PackageVersion)) {
     if (Test-Path -LiteralPath $PropsPath) {
         $propsXml = [xml](Get-Content -LiteralPath $PropsPath -Raw)
@@ -113,10 +180,13 @@ if ([string]::IsNullOrWhiteSpace($PackageVersion)) {
         $PackageVersion = "2.0.0.0"
     }
 }
+Write-Host "Package Name:       $PackageName" -ForegroundColor White
 Write-Host "Package Version:    $PackageVersion" -ForegroundColor White
 Write-Host "Configuration:      $Configuration" -ForegroundColor White
 Write-Host "Publisher:          $Publisher" -ForegroundColor White
+Write-Host "Publisher Display:  $PublisherDisplayName" -ForegroundColor White
 Write-Host "Target Arch:        $Architecture" -ForegroundColor White
+Write-Host "Store Mode:         $($ValidateStoreIdentity.IsPresent)" -ForegroundColor White
 
 # ---------------------------------------------------------------------
 # 2. Locate Windows SDK Tools (MakeAppx, MakePri & SignTool)
@@ -194,6 +264,201 @@ if ($Architecture -eq "all") {
 
 $builtPackages = @()
 
+function Test-MsixPackageArchive {
+    param (
+        [string]$PackagePath,
+        [string]$ExpectedArch,
+        [string]$ExpectedVersion,
+        [string]$ExpectedName,
+        [string]$ExpectedPublisher,
+        [string]$ExpectedPublisherDisplayName,
+        [bool]$EnforceStore
+    )
+
+    Write-Host "`n Verifying MSIX package contents: $([System.IO.Path]::GetFileName($PackagePath))..." -ForegroundColor Yellow
+    if (-not (Test-Path -LiteralPath $PackagePath)) {
+        throw "MSIX package not found for verification: $PackagePath"
+    }
+
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        $entryNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $zip.Entries) {
+            [void]$entryNames.Add($entry.FullName.Replace('\', '/'))
+        }
+
+        # 1. Verify AppxManifest.xml exists
+        $manifestEntry = $zip.Entries | Where-Object { $_.FullName -eq "AppxManifest.xml" }
+        if (-not $manifestEntry) {
+            throw "Package verification failed: AppxManifest.xml was not found inside $PackagePath"
+        }
+
+        $stream = $manifestEntry.Open()
+        $reader = [System.IO.StreamReader]::new($stream)
+        $manifestContent = $reader.ReadToEnd()
+        $reader.Close()
+        $stream.Close()
+
+        [xml]$pkgXml = $manifestContent
+
+        # 2. Check Identity and Properties
+        $actualName = $pkgXml.Package.Identity.Name
+        $actualPublisher = $pkgXml.Package.Identity.Publisher
+        $actualPublisherDisplayName = $pkgXml.Package.Properties.PublisherDisplayName
+        $actualVersion = $pkgXml.Package.Identity.Version
+        $actualArch = $pkgXml.Package.Identity.ProcessorArchitecture
+
+        Write-Host "   Identity/Name:                   $actualName" -ForegroundColor DarkGray
+        Write-Host "   Identity/Publisher:              $actualPublisher" -ForegroundColor DarkGray
+        Write-Host "   Properties/PublisherDisplayName: $actualPublisherDisplayName" -ForegroundColor DarkGray
+        Write-Host "   Identity/Version:                $actualVersion" -ForegroundColor DarkGray
+        Write-Host "   Identity/ProcessorArchitecture:  $actualArch" -ForegroundColor DarkGray
+
+        if ($actualName -ne $ExpectedName) {
+            throw "Package verification failed in ${PackagePath} - Identity/Name is '$actualName', expected '$ExpectedName'."
+        }
+        if ($actualPublisher -ne $ExpectedPublisher) {
+            throw "Package verification failed in ${PackagePath} - Identity/Publisher is '$actualPublisher', expected '$ExpectedPublisher'."
+        }
+        if ($actualPublisherDisplayName -ne $ExpectedPublisherDisplayName) {
+            throw "Package verification failed in ${PackagePath} - Properties/PublisherDisplayName is '$actualPublisherDisplayName', expected '$ExpectedPublisherDisplayName'."
+        }
+        if ($actualVersion -ne $ExpectedVersion) {
+            throw "Package verification failed in ${PackagePath} - Identity/Version is '$actualVersion', expected '$ExpectedVersion'."
+        }
+        if ($actualArch -ne $ExpectedArch) {
+            throw "Package verification failed in ${PackagePath} - Identity/ProcessorArchitecture is '$actualArch', expected '$ExpectedArch'."
+        }
+
+        if ($EnforceStore) {
+            if ($actualName -ne "cdevstudios.PrivGvard" -or
+                $actualPublisher -ne "CN=85AB4167-A0AE-4FDF-B840-B95CD225F7DD" -or
+                $actualPublisherDisplayName -ne "cdev studios") {
+                throw "Package verification failed in ${PackagePath} - Package does not meet Store requirements."
+            }
+        }
+
+        # 3. Check PrivGvard.exe presence
+        if (-not $entryNames.Contains("PrivGvard.exe")) {
+            throw "Package verification failed in ${PackagePath} - PrivGvard.exe is missing from package entries."
+        }
+
+        $appExecutable = $pkgXml.Package.Applications.Application.Executable
+        if ($appExecutable -ne "PrivGvard.exe") {
+            throw "Package verification failed in ${PackagePath} - Manifest Application Executable is '$appExecutable', expected 'PrivGvard.exe'."
+        }
+
+        # 4. Check resources.pri presence
+        if (-not $entryNames.Contains("resources.pri")) {
+            throw "Package verification failed in ${PackagePath} - resources.pri is missing from package entries."
+        }
+
+        # 5. Check all referenced graphic resources
+        $referencedAssets = @()
+        if ($pkgXml.Package.Properties.Logo) {
+            $referencedAssets += $pkgXml.Package.Properties.Logo
+        }
+        $visElem = $pkgXml.Package.Applications.Application.VisualElements
+        if ($visElem) {
+            if ($visElem.Square150x150Logo) { $referencedAssets += $visElem.Square150x150Logo }
+            if ($visElem.Square44x44Logo) { $referencedAssets += $visElem.Square44x44Logo }
+            if ($visElem.DefaultTile) {
+                if ($visElem.DefaultTile.Square71x71Logo) { $referencedAssets += $visElem.DefaultTile.Square71x71Logo }
+                if ($visElem.DefaultTile.Square310x310Logo) { $referencedAssets += $visElem.DefaultTile.Square310x310Logo }
+                if ($visElem.DefaultTile.Wide310x150Logo) { $referencedAssets += $visElem.DefaultTile.Wide310x150Logo }
+            }
+            if ($visElem.SplashScreen -and $visElem.SplashScreen.Image) {
+                $referencedAssets += $visElem.SplashScreen.Image
+            }
+        }
+
+        foreach ($asset in $referencedAssets) {
+            $normalized = $asset.Replace('\', '/')
+            if (-not $entryNames.Contains($normalized)) {
+                throw "Package verification failed in ${PackagePath} - Referenced asset '$asset' (normalized: '$normalized') was not found in package entries."
+            }
+        }
+        Write-Host "   Verification: PASS (Identity, Version, Architecture, Executable, PRI & $($referencedAssets.Count) Visual Assets)" -ForegroundColor Green
+    }
+    finally {
+        $zip.Dispose()
+    }
+}
+
+function Test-MsixBundleArchive {
+    param (
+        [string]$BundlePath,
+        [string]$ExpectedVersion,
+        [string]$ExpectedName,
+        [string]$ExpectedPublisher,
+        [string]$ExpectedPublisherDisplayName,
+        [bool]$EnforceStore
+    )
+
+    Write-Host "`n Verifying MSIX Bundle contents: $([System.IO.Path]::GetFileName($BundlePath))..." -ForegroundColor Yellow
+    if (-not (Test-Path -LiteralPath $BundlePath)) {
+        throw "MSIX bundle not found for verification: $BundlePath"
+    }
+
+    $bundleZip = [System.IO.Compression.ZipFile]::OpenRead($BundlePath)
+    $tempExtractDir = Join-Path ([System.IO.Path]::GetTempPath()) ("PrivGvardBundleCheck_" + [System.Guid]::NewGuid().ToString("N"))
+    try {
+        $bundleManifestEntry = $bundleZip.Entries | Where-Object { $_.FullName -like "*AppxBundleManifest.xml" }
+        if (-not $bundleManifestEntry) {
+            throw "Bundle verification failed in ${BundlePath} - AppxBundleManifest.xml was not found inside the bundle archive."
+        }
+
+        $stream = $bundleManifestEntry.Open()
+        $reader = [System.IO.StreamReader]::new($stream)
+        $bundleManifestContent = $reader.ReadToEnd()
+        $reader.Close()
+        $stream.Close()
+
+        [xml]$bundleXml = $bundleManifestContent
+        $actualName = $bundleXml.Bundle.Identity.Name
+        $actualPublisher = $bundleXml.Bundle.Identity.Publisher
+
+        Write-Host "   Bundle Identity/Name:      $actualName" -ForegroundColor DarkGray
+        Write-Host "   Bundle Identity/Publisher: $actualPublisher" -ForegroundColor DarkGray
+
+        if ($actualName -ne $ExpectedName) {
+            throw "Bundle verification failed in ${BundlePath} - Bundle Identity/Name is '$actualName', expected '$ExpectedName'."
+        }
+        if ($actualPublisher -ne $ExpectedPublisher) {
+            throw "Bundle verification failed in ${BundlePath} - Bundle Identity/Publisher is '$actualPublisher', expected '$ExpectedPublisher'."
+        }
+
+        # Inspect internal packages
+        $msixEntries = @($bundleZip.Entries | Where-Object { $_.FullName.EndsWith(".msix", [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($msixEntries.Count -eq 0) {
+            throw "Bundle verification failed in ${BundlePath} - No internal .msix packages found."
+        }
+
+        New-Item -ItemType Directory -Path $tempExtractDir -Force | Out-Null
+        foreach ($msixEntry in $msixEntries) {
+            $extractedMsixPath = Join-Path $tempExtractDir $msixEntry.Name
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($msixEntry, $extractedMsixPath, $true)
+
+            $pkgArch = if ($msixEntry.Name -like "*x64*") { "x64" } elseif ($msixEntry.Name -like "*arm64*") { "arm64" } else { "neutral" }
+            Test-MsixPackageArchive `
+                -PackagePath $extractedMsixPath `
+                -ExpectedArch $pkgArch `
+                -ExpectedVersion $ExpectedVersion `
+                -ExpectedName $ExpectedName `
+                -ExpectedPublisher $ExpectedPublisher `
+                -ExpectedPublisherDisplayName $ExpectedPublisherDisplayName `
+                -EnforceStore $EnforceStore
+        }
+        Write-Host "   Bundle Verification: PASS ($($msixEntries.Count) internal package(s) verified)" -ForegroundColor Green
+    }
+    finally {
+        $bundleZip.Dispose()
+        if (Test-Path -LiteralPath $tempExtractDir) {
+            Remove-Item -LiteralPath $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 # ---------------------------------------------------------------------
 # 4. Build and Package each Architecture
 # ---------------------------------------------------------------------
@@ -228,6 +493,7 @@ foreach ($arch in $architecturesToBuild) {
     # Prepare AppxManifest.xml for this architecture
     Write-Host "`n [2/3] Configuring AppxManifest.xml for $arch..." -ForegroundColor Yellow
     [xml]$manifestXml = Get-Content -LiteralPath $ManifestSourcePath -Raw
+    $manifestXml.Package.Identity.Name = $PackageName
     $manifestXml.Package.Identity.ProcessorArchitecture = $arch
     $manifestXml.Package.Identity.Version = $PackageVersion
     $manifestXml.Package.Identity.Publisher = $Publisher
@@ -285,6 +551,17 @@ foreach ($arch in $architecturesToBuild) {
     }
 
     Write-Host "Successfully created MSIX package: $packageFilePath" -ForegroundColor Green
+
+    # Deep verification of the final MSIX package archive
+    Test-MsixPackageArchive `
+        -PackagePath $packageFilePath `
+        -ExpectedArch $arch `
+        -ExpectedVersion $PackageVersion `
+        -ExpectedName $PackageName `
+        -ExpectedPublisher $Publisher `
+        -ExpectedPublisherDisplayName $PublisherDisplayName `
+        -EnforceStore $ValidateStoreIdentity.IsPresent
+
     $builtPackages += $packageFilePath
 }
 
@@ -322,6 +599,15 @@ if ($CreateBundle -and $builtPackages.Count -gt 0) {
     # Cleanup bundle staging
     Remove-Item -LiteralPath $bundleStagingDir -Recurse -Force
     Write-Host "Successfully created MSIX bundle: $bundleFilePath" -ForegroundColor Green
+
+    # Deep verification of the final MSIX bundle and its internal packages
+    Test-MsixBundleArchive `
+        -BundlePath $bundleFilePath `
+        -ExpectedVersion $PackageVersion `
+        -ExpectedName $PackageName `
+        -ExpectedPublisher $Publisher `
+        -ExpectedPublisherDisplayName $PublisherDisplayName `
+        -EnforceStore $ValidateStoreIdentity.IsPresent
 }
 
 # ---------------------------------------------------------------------

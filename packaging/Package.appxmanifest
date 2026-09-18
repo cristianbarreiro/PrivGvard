@@ -10,14 +10,14 @@
   IgnorableNamespaces="uap rescap desktop desktop4 desktop6 mp">
 
   <Identity
-    Name="PrivGvard"
-    Publisher="CN=PrivGvard"
+    Name="cdevstudios.PrivGvard"
+    Publisher="CN=85AB4167-A0AE-4FDF-B840-B95CD225F7DD"
     Version="2.0.0.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
     <DisplayName>PrivGvard</DisplayName>
-    <PublisherDisplayName>PrivGvard</PublisherDisplayName>
+    <PublisherDisplayName>cdev studios</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <Description>PrivGvard - Camera &amp; Microphone Privacy Guard for Windows</Description>
   </Properties>

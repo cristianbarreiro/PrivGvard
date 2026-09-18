@@ -3,8 +3,11 @@
 **Document Version:** 1.0.0  
 **Date:** September 2026  
 **Application Name:** PrivGvard  
-**Package Identity:** `cdevStudio.PrivGvard`  
-**Publisher:** `cdev Studio`  
+**Package Identity (Name):** `cdevstudios.PrivGvard`  
+**Publisher:** `CN=85AB4167-A0AE-4FDF-B840-B95CD225F7DD`  
+**Publisher Display Name:** `cdev studios`  
+**Package Family Name (PFN):** `cdevstudios.PrivGvard_tv7b4yqg10sw2`  
+**Microsoft Store ID:** `9N079FF8XLVN`  
 **Target Platform:** Windows 10 (Build 19041+) and Windows 11 (x64, ARM64)  
 **Submission Contact:** `reportapp@microsoft.com` / Partner Center Restricted Capabilities Review  
 

@@ -8,7 +8,9 @@ param (
 
     [switch]$SignMsix,
 
-    [string]$CertificateThumbprint
+    [string]$CertificateThumbprint,
+
+    [switch]$AllowTestIdentity
 )
 
 $ErrorActionPreference = "Stop"
@@ -324,6 +326,10 @@ if (-not $SkipMsix) {
         Configuration = $Configuration
     }
 
+    if (-not $AllowTestIdentity) {
+        $msixParams["ValidateStoreIdentity"] = $true
+    }
+
     if ($SignMsix) {
         $msixParams["SignPackage"] = $true
         if ($CertificateThumbprint) {
@@ -354,6 +360,71 @@ if (-not $SkipMsix) {
         exit 1
     }
     $GeneratedMsixFile = $msixCandidates[0]
+
+    # Deep verification of final MSIX package manifest and contents
+    Write-Host "Verifying final MSIX package manifest and contents ($($GeneratedMsixFile.Name))..." -ForegroundColor Gray
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($GeneratedMsixFile.FullName)
+    try {
+        $manifestEntry = $zip.Entries | Where-Object { $_.FullName -eq "AppxManifest.xml" }
+        if (-not $manifestEntry) {
+            Write-Error "MSIX verification failed: AppxManifest.xml missing inside $($GeneratedMsixFile.FullName)"
+            exit 1
+        }
+        $stream = $manifestEntry.Open()
+        $reader = [System.IO.StreamReader]::new($stream)
+        [xml]$pkgXml = $reader.ReadToEnd()
+        $reader.Close()
+        $stream.Close()
+
+        $pkgName = $pkgXml.Package.Identity.Name
+        $pkgPublisher = $pkgXml.Package.Identity.Publisher
+        $pkgPublisherDisplayName = $pkgXml.Package.Properties.PublisherDisplayName
+        $pkgVersion = $pkgXml.Package.Identity.Version
+        $pkgArch = $pkgXml.Package.Identity.ProcessorArchitecture
+        $pkgExecutable = $pkgXml.Package.Applications.Application.Executable
+
+        Write-Host "  MSIX Package Identity Details:" -ForegroundColor Gray
+        Write-Host "    Identity/Name:                   $pkgName" -ForegroundColor Gray
+        Write-Host "    Identity/Publisher:              $pkgPublisher" -ForegroundColor Gray
+        Write-Host "    Properties/PublisherDisplayName: $pkgPublisherDisplayName" -ForegroundColor Gray
+        Write-Host "    Identity/Version:                $pkgVersion" -ForegroundColor Gray
+        Write-Host "    Identity/ProcessorArchitecture:  $pkgArch" -ForegroundColor Gray
+        Write-Host "    Application/Executable:          $pkgExecutable" -ForegroundColor Gray
+
+        if ($pkgExecutable -ne "PrivGvard.exe") {
+            Write-Error "MSIX verification failed: Executable is '$pkgExecutable', expected 'PrivGvard.exe'"
+            exit 1
+        }
+
+        if (-not $AllowTestIdentity) {
+            $expectedStoreName = "cdevstudios.PrivGvard"
+            $expectedStorePublisher = "CN=85AB4167-A0AE-4FDF-B840-B95CD225F7DD"
+            $expectedStorePubDisplay = "cdev studios"
+
+            if ($pkgName -ne $expectedStoreName -or
+                $pkgPublisher -ne $expectedStorePublisher -or
+                $pkgPublisherDisplayName -ne $expectedStorePubDisplay) {
+                Write-Error "MSIX Store identity verification failed:`n  Expected Name='$expectedStoreName', got '$pkgName'`n  Expected Publisher='$expectedStorePublisher', got '$pkgPublisher'`n  Expected PublisherDisplayName='$expectedStorePubDisplay', got '$pkgPublisherDisplayName'"
+                exit 1
+            }
+        }
+
+        $entryNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+        foreach ($e in $zip.Entries) { [void]$entryNames.Add($e.FullName.Replace('\', '/')) }
+
+        if (-not $entryNames.Contains("PrivGvard.exe")) {
+            Write-Error "MSIX verification failed: PrivGvard.exe is missing from package entries."
+            exit 1
+        }
+        if (-not $entryNames.Contains("resources.pri")) {
+            Write-Error "MSIX verification failed: resources.pri is missing from package entries."
+            exit 1
+        }
+    }
+    finally {
+        $zip.Dispose()
+    }
 } else {
     Write-Host "`n[6/6] Packaging MSIX container (x64)... SKIPPED (-SkipMsix)" -ForegroundColor DarkGray
 }

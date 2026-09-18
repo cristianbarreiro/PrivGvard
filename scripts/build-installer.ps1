@@ -12,7 +12,9 @@ param (
 
     [switch]$SignMsix,
 
-    [string]$CertificateThumbprint
+    [string]$CertificateThumbprint,
+
+    [switch]$AllowTestIdentity
 )
 
 $ErrorActionPreference = "Stop"
