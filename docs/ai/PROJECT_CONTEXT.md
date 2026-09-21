@@ -34,26 +34,27 @@ PrivGvard is a transparent, reversible privacy utility designed to provide users
   - IPC/Mutex primitives: `Global\PrivLock_SingleInstance`, `Global\PrivLock_UninstallGate`.
   - *Note*: Internal identifiers remain intentionally stable for code continuity, backward compatibility, and atomic migration safety.
 
----
+The requested product name is **PrivGvard**. The current repository is still named `Cam&MicroBlocker`, the solution is `PrivGvard.sln`, namespaces and assemblies use `PrivLock`, and the Windows executable is `PrivLock.dll`/`PrivLock.exe` depending on build output. This naming mismatch is a documentation and branding migration item, not an instruction to rename code automatically.
 
 ## 2. Current verified state
 
 | Area | Verified truth | Confidence |
 |---|---|---|
-| Runtime | .NET 10, Avalonia UI 11.2.3, single desktop host at `src/PrivLock.Desktop` | High |
-| Architecture | Clean Architecture: Domain, Platform.Abstractions, Infrastructure.Common, Application, Native Platform Adapters, UI, and Desktop Host | High |
-| Windows | Full mutation & persistent recovery supported: dual-layer AppPrivacy Group Policy, verified PnP device node control (`CfgMgr32.dll`), Core Audio capture endpoint mute lock, durable JSON Write-Ahead Log (WAL) session journal, authenticated transient on-demand privileged worker (`--privileged-worker`) via named pipes with 256-bit nonces and bilateral PID verification | High for simulated/unit tests; manual hardware VM acceptance required for physical release |
-| Linux | Discovery & UI scaffold only: `LinuxDeviceDetector` enumerates V4L2/sysfs; capability provider reports `CapabilityLevel.None`; production DI registers `UnsupportedPrivacySessionPlatformAdapter`; privacy mutation is not supported | High |
-| macOS | Discovery & UI scaffold only: `MacOSDeviceDetector` enumerates CoreAudio HAL inputs; capability provider reports `CapabilityLevel.None`; production DI registers `UnsupportedPrivacySessionPlatformAdapter`; privacy mutation is not supported (TCC cannot be silently revoked) | High |
-| Test suite | Full active automated test suite covering Domain, Infrastructure, Application, and Windows Platform tests. Dynamic passing counts are validated by CI and test runner; volatile totals are intentionally omitted from durable docs | High |
-| CI Topology | Multiplatform matrix (`windows-latest`, `ubuntu-latest`, `macos-latest`) in [.github/workflows/ci.yml](../../.github/workflows/ci.yml). Cross-platform tests (Domain, Application, Infrastructure) execute across all runners; Windows Platform tests execute strictly on Windows runners (`if: runner.os == 'Windows'`) | High |
-| Legacy quarantine | Archived PrivLock 1.x WPF codebase isolated under `legacy/CamMicBlocker` and `legacy/tests/CamMicBlocker.Tests`; protected with build guards; completely excluded from active solution and normal builds | High |
+| Runtime | .NET 10, Avalonia 11.2.3, single desktop host at `src/PrivLock.Desktop` | High |
+| Architecture | Domain, abstractions, common infrastructure, application, platform providers, UI and desktop composition root | High |
+| Windows | Durable privacy session, JSON journal, ownership attestation, authenticated on-demand privileged worker, PnP/registry/audio orchestration and recovery tests exist | High for unit/integration simulation; hardware/UAC behavior still needs isolated VM acceptance |
+| Linux | Detector/controller scaffolding exists, but capability provider reports `None`; persistent recovery adapter is unsupported | High |
+| macOS | Detector/controller scaffolding exists, but capability provider reports `None`; persistent recovery adapter is unsupported; secure provider methods are currently no-op success paths | High |
+| Tests | Latest local run: 156 passed, 0 failed, 0 skipped (25 Domain, 30 Infrastructure, 58 Application, 43 Windows) | High |
+| CI | GitHub Actions defines Windows/Ubuntu/macOS build-test matrix and selected publish targets | High; native privacy behavior is not proven by CI |
+| Legacy code | Archived at `legacy/CamMicBlocker` and `legacy/tests/CamMicBlocker.Tests`; build-guarded, not part of active solution | High |
 
-> [!IMPORTANT]
-> **Build Success != Test Success != Publish Success != Native Privacy Support**
-> Successful cross-platform build or single-file publishing on Linux (`linux-x64`) or macOS (`osx-arm64`) verifies compiler and packaging compatibility only. It does NOT confer production privacy mutation or persistent recovery support on non-Windows platforms.
+### Active Host vs Legacy Quarantine
+- **ACTIVE HOST**: `src/PrivLock.Desktop` (produces `PrivGvard.exe`).
+- **LEGACY**: `legacy/CamMicBlocker` (archived PrivLock 1.x implementation with build guard).
+- **NORMAL BUILDS MUST NEVER BUILD LEGACY CODE.**
 
----
+The current build succeeds with `dotnet build PrivGvard.sln --no-restore`. A concurrent restore attempt can fail because of a NuGet scratch-lock collision; that is an environment/parallelism issue and must not be reported as a product code failure without reproducing a serialized restore.
 
 ## 3. Architecture map
 

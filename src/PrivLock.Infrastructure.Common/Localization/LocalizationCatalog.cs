@@ -172,7 +172,10 @@ public static class LocalizationCatalog
 
         // System Tray Menu & Tooltip
         ["TrayOpen"] = "Abrir PrivGvard",
+        ["Tray.Open"] = "Abrir PrivGvard",
         ["TrayExit"] = "Salir",
+        ["Tray.Exit"] = "Salir",
+        ["Tray.ToolTip"] = "PrivGvard - Bloqueador de Cámara y Micrófono",
         ["AppSubtitleLong"] = "PrivGvard - Bloqueador de Cámara y Micrófono",
 
         // Common Error Fallbacks
@@ -356,7 +359,10 @@ public static class LocalizationCatalog
 
         // System Tray Menu & Tooltip
         ["TrayOpen"] = "Open PrivGvard",
+        ["Tray.Open"] = "Open PrivGvard",
         ["TrayExit"] = "Exit",
+        ["Tray.Exit"] = "Exit",
+        ["Tray.ToolTip"] = "PrivGvard - Camera & Microphone Blocker",
         ["AppSubtitleLong"] = "PrivGvard - Camera & Microphone Blocker",
 
         // Common Error Fallbacks

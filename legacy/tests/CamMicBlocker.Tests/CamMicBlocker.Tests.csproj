@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <Target Name="PreventAccidentalLegacyBuild" BeforeTargets="BeforeBuild;BeforeRebuild">
-    <Error Condition="'$(AllowLegacyBuild)' != 'true'" Text="This is the archived PrivLock 1.x test project. Run tests for PrivGvard via CamMicBlocker.sln instead." />
+    <Error Condition="'$(AllowLegacyBuild)' != 'true'" Text="This is the archived PrivLock 1.x test project. Run tests for PrivGvard via PrivGvard.sln instead." />
   </Target>
 
 </Project>

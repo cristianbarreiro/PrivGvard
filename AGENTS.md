@@ -156,21 +156,12 @@ src/
 
 ### Restore & Build Solution
 ```powershell
-dotnet build CamMicBlocker.sln
+dotnet build PrivGvard.sln
 ```
 
 ### Run Active Test Suite
 ```powershell
-# On Windows (runs all tests including Windows platform tests):
-dotnet test CamMicBlocker.sln
-
-# Cross-platform test execution (Domain, Application, Infrastructure):
-dotnet test tests/PrivLock.Domain.Tests/PrivLock.Domain.Tests.csproj
-dotnet test tests/PrivLock.Application.Tests/PrivLock.Application.Tests.csproj
-dotnet test tests/PrivLock.Infrastructure.Tests/PrivLock.Infrastructure.Tests.csproj
-
-# Windows Platform tests (Windows runners only):
-dotnet test tests/PrivLock.Platform.Windows.Tests/PrivLock.Platform.Windows.Tests.csproj
+dotnet test PrivGvard.sln
 ```
 
 ### Run Application (Debug)

@@ -11,13 +11,19 @@
 
 ## 1. Resumen de Estado del Sistema
 
-- **Arquitectura**: Clean Architecture en C# / .NET 10 con Avalonia UI 11. Host unificado en `src/PrivLock.Desktop`.
-- **Suite de Pruebas**: Suite activa completa ejecutada en CI multi-plataforma. Pruebas de Dominio, Aplicación e Infraestructura se ejecutan en Windows, Ubuntu y macOS; pruebas de la plataforma Windows se ejecutan condicionalmente en Windows.
-- **Identidad**: El producto compila como `PrivGvard.exe` con metadatos oficiales, instalador Inno Setup (`PrivGvard-Setup-2.0.0.exe`) y distribución portable (`PrivGvard-Portable-2.0.0.zip`). Los espacios de nombres internos (`PrivLock.*`) y solución (`CamMicBlocker.sln`) se mantienen estables por compatibilidad.
+- `AGENTS.md`, `README.md` y `docs/recovery-validation.md`.
+- La solución `PrivGvard.sln` (renombrada desde `CamMicBlocker.sln`), el host `src/PrivLock.Desktop` y la composición de dependencias.
+- Servicios de aplicación, modelos de estado, almacenamiento, journal/recovery y cierre coordinado.
+- Proveedores Windows, Linux y macOS, con especial atención a cualquier mutación del sistema.
+- Tests, workflow de CI y la separación del árbol heredado `src/CamMicBlocker`.
+- Compilación y suite local.
 
 ---
 
-## 2. Trabajo Pendiente y Deuda Técnica (Roadmap)
+```text
+dotnet build PrivGvard.sln --no-restore       -> correcto, 0 advertencias, 0 errores
+dotnet test PrivGvard.sln --no-restore        -> 156 correctas, 0 errores, 0 omitidas
+```
 
 ### P0 — Salvaguardas de Seguridad Multiplataforma (Linux / macOS)
 

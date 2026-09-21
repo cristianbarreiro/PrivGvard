@@ -168,11 +168,11 @@ public partial class App : Avalonia.Application
 
             var nativeMenu = new NativeMenu();
 
-            var openTitle = _localizationService?.GetString("TrayOpen") ?? "Abrir PrivGvard";
+            var openTitle = _localizationService?.GetString("TrayOpen", "Abrir PrivGvard") ?? "Abrir PrivGvard";
             _trayOpenItem = new NativeMenuItem(openTitle);
             _trayOpenItem.Click += (_, _) => ShowMainWindow();
 
-            var exitTitle = _localizationService?.GetString("TrayExit") ?? "Salir";
+            var exitTitle = _localizationService?.GetString("TrayExit", "Salir") ?? "Salir";
             _trayExitItem = new NativeMenuItem(exitTitle);
             _trayExitItem.Click += (_, _) =>
                 _ = RequestShutdownAsync(desktop, "TrayExit", allowIncomplete: false);
@@ -181,7 +181,7 @@ public partial class App : Avalonia.Application
             nativeMenu.Items.Add(new NativeMenuItemSeparator());
             nativeMenu.Items.Add(_trayExitItem);
 
-            var toolTip = _localizationService?.GetString("AppSubtitleLong") ?? "PrivGvard - Bloqueador de Cámara y Micrófono";
+            var toolTip = _localizationService?.GetString("Tray.ToolTip", "PrivGvard - Bloqueador de Cámara y Micrófono") ?? "PrivGvard - Bloqueador de Cámara y Micrófono";
             _trayIcon = new TrayIcon
             {
                 ToolTipText = toolTip,
@@ -213,29 +213,36 @@ public partial class App : Avalonia.Application
 
     private void OnLanguageChanged(string lang)
     {
-        Dispatcher.UIThread.Post(UpdateTrayLocalization);
-    }
-
-    private void UpdateTrayLocalization()
-    {
-        if (_localizationService == null) return;
-
-        if (_trayOpenItem != null)
-            _trayOpenItem.Header = _localizationService.GetString("TrayOpen");
-        if (_trayExitItem != null)
-            _trayExitItem.Header = _localizationService.GetString("TrayExit");
-        if (_trayIcon != null)
-            _trayIcon.ToolTipText = _localizationService.GetString("AppSubtitleLong");
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_trayOpenItem != null && _localizationService != null)
+                _trayOpenItem.Header = _localizationService.GetString("TrayOpen", "Abrir PrivGvard");
+            if (_trayExitItem != null && _localizationService != null)
+                _trayExitItem.Header = _localizationService.GetString("TrayExit", "Salir");
+            if (_trayIcon != null && _localizationService != null)
+                _trayIcon.ToolTipText = _localizationService.GetString("Tray.ToolTip", "PrivGvard - Bloqueador de Cámara y Micrófono");
+        });
     }
 
     public void ShowMainWindow()
     {
-        if (_mainWindow == null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_mainWindow == null) return;
 
-        _mainWindow.Show();
-        _mainWindow.WindowState = WindowState.Normal;
-        _mainWindow.Activate();
-        _mainWindow.BringIntoView();
+            if (!_mainWindow.IsVisible)
+            {
+                _mainWindow.Show();
+            }
+
+            if (_mainWindow.WindowState == WindowState.Minimized)
+            {
+                _mainWindow.WindowState = WindowState.Normal;
+            }
+
+            _mainWindow.Activate();
+            _mainWindow.BringIntoView();
+        });
     }
 
     private static async Task ObserveOperatingSystemShutdownRestoreAsync(

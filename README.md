@@ -131,15 +131,12 @@ legacy/                               # Quarantined archived PrivLock 1.x WPF co
 ```powershell
 git clone https://github.com/cristianbarreiro/PrivGvard.git
 cd PrivGvard
-dotnet build CamMicBlocker.sln
+dotnet build PrivGvard.sln
 ```
 
 ### 2. Run Active Test Suite
 ```powershell
-# Run all tests on Windows:
-dotnet test CamMicBlocker.sln
-
-# See CI for current passing test count and cross-platform execution.
+dotnet test PrivGvard.sln
 ```
 
 ### 3. Run Application (Debug)

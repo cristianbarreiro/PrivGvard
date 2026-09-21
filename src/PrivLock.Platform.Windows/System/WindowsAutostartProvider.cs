@@ -20,6 +20,11 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
     {
         try
         {
+            if (PackageIdentityHelper.IsRunningAsPackaged)
+            {
+                Log.Debug("Checking autostart in MSIX package context ({Package})", PackageIdentityHelper.PackageFullName);
+            }
+
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
             var value = key?.GetValue(AppName) ?? key?.GetValue(LegacyAppName);
             return value != null;
@@ -51,6 +56,11 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 return OperationResult.Fail(error);
             }
 
+            if (PackageIdentityHelper.IsRunningAsPackaged)
+            {
+                Log.Information("Enabling startup in MSIX packaged context ({Package})", PackageIdentityHelper.PackageFullName);
+            }
+
             key.SetValue(AppName, $"\"{exePath}\" --minimized");
 
             // Clean up any legacy PrivLock startup entry to avoid duplicate executions
@@ -77,6 +87,11 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
     {
         try
         {
+            if (PackageIdentityHelper.IsRunningAsPackaged)
+            {
+                Log.Information("Disabling startup in MSIX packaged context ({Package})", PackageIdentityHelper.PackageFullName);
+            }
+
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
             if (key != null)
             {
