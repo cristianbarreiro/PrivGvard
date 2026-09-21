@@ -49,6 +49,16 @@ public class LocalizationCatalogTests
     [InlineData("en", "DeviceEnabled", "Enabled")]
     [InlineData("es", "DeviceDisabled", "Deshabilitado")]
     [InlineData("en", "DeviceDisabled", "Disabled")]
+    [InlineData("es", "TrayOpen", "Abrir PrivGvard")]
+    [InlineData("en", "TrayOpen", "Open PrivGvard")]
+    [InlineData("es", "TrayExit", "Salir")]
+    [InlineData("en", "TrayExit", "Exit")]
+    [InlineData("es", "Tray.Open", "Abrir PrivGvard")]
+    [InlineData("en", "Tray.Open", "Open PrivGvard")]
+    [InlineData("es", "Tray.Exit", "Salir")]
+    [InlineData("en", "Tray.Exit", "Exit")]
+    [InlineData("es", "Tray.ToolTip", "PrivGvard - Bloqueador de Cámara y Micrófono")]
+    [InlineData("en", "Tray.ToolTip", "PrivGvard - Camera & Microphone Blocker")]
     public void Get_RequiredSemanticKeys_ReturnCorrectTranslation(string lang, string key, string expected)
     {
         var result = LocalizationCatalog.Get(key, lang);

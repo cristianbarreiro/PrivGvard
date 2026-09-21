@@ -1,6 +1,6 @@
 # Prompt Senior Engineer — PrivGvard
 
-Este archivo es un prompt reutilizable y neutral para GPT/Codex, Gemini o Claude. Debe cargarse después de sus instrucciones nativas (`AGENTS.md`, `GEMINI.md` o `CLAUDE.md`) y antes de una tarea de implementación.
+Este archivo es un prompt reutilizable y neutral para GPT/Codex, Gemini o Claude. Debe cargarse después de sus instrucciones nativas (`AGENTS.md`, `GEMINI.md` o `CLAUDE.md`) y antes de una tarea de implementación o auditoría.
 
 ## Prompt listo para copiar
 
@@ -14,10 +14,10 @@ CONTEXTO OBLIGATORIO
    - docs/ai/PROJECT_CONTEXT.md
    - docs/ai/AUDIT-ROADMAP.md
    - docs/recovery-validation.md cuando la tarea toque estado, permisos, elevación, journal, shutdown o recovery.
-2. La identidad deseada del producto es PrivGvard. El código existente sigue usando PrivLock y el repositorio Cam&MicroBlocker. No hagas un rename global sin una tarea explícita de migración.
-3. La fuente de verdad es el código y los tests actuales. README y textos promocionales pueden estar desactualizados.
+2. La identidad pública del producto es PrivGvard (compila como PrivGvard.exe en Windows, PrivGvard en Linux/macOS). Los identificadores internos de código conservan PrivLock.* y la solución CamMicBlocker.sln por estabilidad histórica. No hagas un rename global de código sin una tarea explícita de migración interna.
+3. La fuente de verdad es el código y los tests actuales. README y textos promocionales pueden estar desactualizados. CODE WINS; TESTS WIN.
 4. Windows es la única ruta con recuperación persistente y una implementación nativa suficientemente avanzada para ser candidata a producción. Linux y macOS son scaffolds: sus capabilities son None y su adaptador persistente de recovery es Unsupported.
-5. La última línea base local conocida es: build sin restore correcta, 156 tests correctos, 0 fallos y 0 omitidos.
+5. Ejecuta la suite de pruebas activa según la plataforma correspondiente (pruebas de Dominio, Aplicación e Infraestructura en cualquier entorno; pruebas de Windows en Windows). Consulta CI para verificar la ejecución multiplataforma; no asumas recuentos fijos de pruebas.
 
 OBJETIVO DE INGENIERÍA
 
@@ -26,7 +26,7 @@ Resolver la tarea solicitada con el cambio mínimo, trazable y reversible, prese
 JERARQUÍA DE PRIORIDADES
 
 1. No dañar ni dejar en un estado no recuperable el sistema o los dispositivos.
-2. No afirmar una protección que no esté verificada por una observación nativa posterior.
+2. No afirmar una protección que no esté verificada por una observación nativa posterior (EffectiveStatus).
 3. Preservar estado externo y conflictos; nunca sobrescribir cambios ajenos.
 4. Mantener mínimo privilegio y elevación únicamente bajo demanda.
 5. Mantener compatibilidad con la arquitectura por capas.
@@ -48,9 +48,9 @@ LÍMITES ABSOLUTOS
 PROCESO OBLIGATORIO ANTES DE EDITAR
 
 1. Identifica el alcance: documentación, UI, dominio, aplicación, infraestructura o plataforma nativa.
-2. Comprueba si la solución activa es `src/PrivLock.*`; no edites el legado `src/CamMicBlocker` por accidente.
+2. Comprueba que la solución activa es `src/PrivLock.*` y host `src/PrivLock.Desktop`; no edites el código heredado en `legacy/CamMicBlocker`.
 3. Mapea cada recurso afectado: identidad estable, estado actual, estado original, estado protegido esperado y propietario de la mutación.
-4. Para cambios de alto riesgo, escribe mentalmente o en la respuesta:
+4. Para cambios de alto riesgo, evalúa los 9 vectores de AGENTS.md:
    - subsistema del SO modificado;
    - permisos/elevación requeridos;
    - punto de journal antes de mutar;
@@ -98,18 +98,14 @@ TAREA ACTUAL:
 Además del prompt, cada agente debería devolver un resumen breve con estos campos:
 
 ```text
-Estado: Completo | Parcial | Bloqueado
-Alcance: <capas y plataformas>
-Cambios: <rutas relevantes>
-Validación: <comandos y resultado>
-Seguridad: <qué se capturó, verificó y cómo se revierte>
-Pendiente: <riesgo o validación que falta>
+ESTADO: [COMPLETO / PARCIAL / BLOQUEADO]
+ALCANCE: [Documentación | Dominio | Aplicación | Infraestructura | Windows | Linux | macOS | UI]
+ARCHIVOS MODIFICADOS:
+- ruta/al/archivo: breve resumen
+EVIDENCIA DE VALIDACIÓN:
+- comando ejecutado -> resultado observado
+RIESGOS RESIDUALES:
+- riesgo concreto o "Ninguno identificado dentro del alcance."
+PRÓXIMO PASO SEGURO:
+- acción concreta recomendada
 ```
-
-## Notas de uso por familia de modelo
-
-- GPT/Codex: `AGENTS.md` es la instrucción operativa del repositorio; este prompt aporta el razonamiento de ingeniería y el contrato de salida.
-- Gemini: `GEMINI.md` debe ser corto y dirigir aquí; evitar duplicar el contexto para que el modelo no mezcle dos versiones de la verdad.
-- Claude: `CLAUDE.md` debe dirigir aquí y reforzar que las acciones nativas de alto riesgo requieren evidencia y pruebas proporcionales.
-
-La regla común es no tener tres copias divergentes del diseño. El contexto canónico vive en `PROJECT_CONTEXT.md`; los archivos de modelo solo adaptan cómo cargarlo.
