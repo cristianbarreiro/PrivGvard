@@ -7,15 +7,27 @@ namespace PrivLock.Platform.Windows.System;
 
 /// <summary>
 /// Manages autostart on Windows using HKCU\Software\Microsoft\Windows\CurrentVersion\Run.
+/// Respects the Windows Task Manager's StartupApproved\Run registry overlay so that the
+/// PrivGvard checkbox stays synchronized with the effective OS startup state.
 /// </summary>
 public sealed class WindowsAutostartProvider : IAutostartProvider
 {
     private static readonly ILogger Log = Serilog.Log.ForContext<WindowsAutostartProvider>();
 
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string StartupApprovedKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
     private const string AppName = "PrivGvard";
     private const string LegacyAppName = "PrivLock";
 
+    /// <summary>
+    /// Returns true only when the Run registry value exists AND has not been disabled
+    /// by the user via Task Manager or Settings > Apps > Startup.
+    ///
+    /// Windows disables startup entries by writing a 12-byte REG_BINARY value into
+    /// HKCU\...\StartupApproved\Run. When the first three bytes are 03 00 00 (or any
+    /// value with bit 0 of byte[0] set), the entry is disabled. When the entry is
+    /// enabled (or the value is absent), the first byte is 02 (or 06) with bit 0 clear.
+    /// </summary>
     public bool IsAutostartEnabled()
     {
         try
@@ -25,9 +37,26 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 Log.Debug("Checking autostart in MSIX package context ({Package})", PackageIdentityHelper.PackageFullName);
             }
 
-            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-            var value = key?.GetValue(AppName) ?? key?.GetValue(LegacyAppName);
-            return value != null;
+            // 1. Check whether the Run value exists at all
+            using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath);
+            var runValue = runKey?.GetValue(AppName) ?? runKey?.GetValue(LegacyAppName);
+            if (runValue == null)
+            {
+                Log.Debug("Autostart registry value not found in Run key");
+                return false;
+            }
+
+            // 2. Check whether Windows has disabled it through Task Manager / Settings.
+            // Determine which name is actually registered and check only that one.
+            var activeName = runKey?.GetValue(AppName) != null ? AppName : LegacyAppName;
+            if (IsDisabledByStartupApproved(activeName))
+            {
+                Log.Debug("Autostart registry value exists but is disabled by Windows StartupApproved for {Name}", activeName);
+                return false;
+            }
+
+            Log.Debug("Autostart is enabled: {Name}={Value}", activeName, runValue);
+            return true;
         }
         catch (Exception ex)
         {
@@ -46,6 +75,16 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 var error = "Cannot determine current process path for autostart registration";
                 Log.Error(error);
                 return OperationResult.Fail(error);
+            }
+
+            // Warn if the path looks like a development build (but don't block it)
+            if (exePath.Contains(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase) ||
+                exePath.Contains(@"\bin\Release\", StringComparison.OrdinalIgnoreCase))
+            {
+                Log.Warning(
+                    "Autostart is being registered with a development build path. " +
+                    "This registration will not survive after the installed application replaces this executable. " +
+                    "Path: {Path}", exePath);
             }
 
             using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
@@ -73,7 +112,10 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 Log.Debug(ex, "Legacy startup key cleanup skipped");
             }
 
-            Log.Information("Windows startup enabled: {Path}", exePath);
+            // Remove any Task Manager disable override so the entry becomes effective immediately
+            RemoveStartupApprovedDisable(AppName);
+
+            Log.Information("Windows startup enabled: Path={Path}, RegistryName={Name}", exePath, AppName);
             return OperationResult.Ok();
         }
         catch (Exception ex)
@@ -98,6 +140,11 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 key.DeleteValue(AppName, throwOnMissingValue: false);
                 key.DeleteValue(LegacyAppName, throwOnMissingValue: false);
             }
+
+            // Also clean up StartupApproved entries to leave no trace
+            RemoveStartupApprovedDisable(AppName);
+            RemoveStartupApprovedDisable(LegacyAppName);
+
             Log.Information("Windows startup disabled");
             return OperationResult.Ok();
         }
@@ -105,6 +152,59 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
         {
             Log.Error(ex, "Failed to disable Windows startup");
             return OperationResult.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Checks whether a specific startup entry has been disabled by Windows Task Manager
+    /// via the StartupApproved\Run registry overlay.
+    /// </summary>
+    private static bool IsDisabledByStartupApproved(string valueName)
+    {
+        try
+        {
+            using var approvedKey = Registry.CurrentUser.OpenSubKey(StartupApprovedKeyPath);
+            if (approvedKey == null)
+                return false;
+
+            var rawValue = approvedKey.GetValue(valueName);
+            if (rawValue is not byte[] bytes || bytes.Length < 1)
+                return false;
+
+            // Windows uses a 12-byte REG_BINARY in StartupApproved\Run.
+            // Byte[0] bit 0 (0x01): when set (e.g. 0x03), the entry is DISABLED.
+            // When clear (e.g. 0x02 or 0x06), the entry is ENABLED.
+            var isDisabled = (bytes[0] & 0x01) != 0;
+            Log.Debug("StartupApproved\\Run check: {Name} bytes[0]=0x{Byte:X2}, disabled={Disabled}",
+                valueName, bytes[0], isDisabled);
+            return isDisabled;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "Could not read StartupApproved\\Run for {Name}; assuming not disabled", valueName);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes the StartupApproved\Run override for a given value name so that Windows
+    /// treats the Run entry as enabled. This is necessary when the user explicitly enables
+    /// autostart from PrivGvard after having previously disabled it from Task Manager.
+    /// </summary>
+    private static void RemoveStartupApprovedDisable(string valueName)
+    {
+        try
+        {
+            using var approvedKey = Registry.CurrentUser.OpenSubKey(StartupApprovedKeyPath, writable: true);
+            if (approvedKey?.GetValue(valueName) != null)
+            {
+                approvedKey.DeleteValue(valueName, throwOnMissingValue: false);
+                Log.Debug("Removed StartupApproved\\Run override for {Name}", valueName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "Could not remove StartupApproved\\Run override for {Name}", valueName);
         }
     }
 }

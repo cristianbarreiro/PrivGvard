@@ -208,6 +208,12 @@ public static class Program
             localizationService.Initialize();
 
             // 9. Start Avalonia Application
+            var startMinimized = args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
+            if (startMinimized)
+            {
+                Log.Information("Application starting minimized to system tray (--minimized)");
+            }
+
             var mainViewModel = serviceProvider.GetRequiredService<MainViewModel>();
             var settingsViewModel = serviceProvider.GetRequiredService<SettingsViewModel>();
             if (!startupRecovery.SafeToExit || startupRecovery.ConflictCount > 0)
@@ -216,8 +222,11 @@ public static class Program
                     startupRecovery.ErrorMessage ?? localizationService.GetString("StartupRecoveryFailed", "A previous privacy session could not be fully restored."));
             }
 
-            var exitCode = BuildAvaloniaApp(mainViewModel, _shutdownCoordinator, settingsViewModel, localizationService)
-                .StartWithClassicDesktopLifetime(args);
+            // Strip --minimized from args before passing to Avalonia to avoid unknown-argument warnings
+            var avaloniaArgs = args.Where(a => !a.Equals("--minimized", StringComparison.OrdinalIgnoreCase)).ToArray();
+
+            var exitCode = BuildAvaloniaApp(mainViewModel, _shutdownCoordinator, settingsViewModel, localizationService, startMinimized)
+                .StartWithClassicDesktopLifetime(avaloniaArgs);
 
             var finalRestoreFinished = _shutdownCoordinator.TryRestoreWithin(
                 "ApplicationLifetimeExited",
@@ -303,8 +312,9 @@ public static class Program
         MainViewModel viewModel,
         ShutdownCoordinator shutdownCoordinator,
         SettingsViewModel? settingsViewModel = null,
-        LocalizationService? localizationService = null) =>
-        AppBuilder.Configure<App>(() => new App(viewModel, shutdownCoordinator, settingsViewModel, localizationService))
+        LocalizationService? localizationService = null,
+        bool startMinimized = false) =>
+        AppBuilder.Configure<App>(() => new App(viewModel, shutdownCoordinator, settingsViewModel, localizationService, startMinimized))
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace();
