@@ -207,7 +207,10 @@ public static class Program
             var localizationService = serviceProvider.GetRequiredService<LocalizationService>();
             localizationService.Initialize();
 
-            // 9. Start Avalonia Application
+            // 9. Reconcile persistent DesiredState with actual OS protection state
+            var reconcileResult = recoveryService.ReconcileAtStartupAsync(startupRecovery).GetAwaiter().GetResult();
+
+            // 10. Start Avalonia Application
             var startMinimized = args.Any(a => a.Equals("--minimized", StringComparison.OrdinalIgnoreCase));
             if (startMinimized)
             {
@@ -220,6 +223,11 @@ public static class Program
             {
                 mainViewModel.ReportExternalError(
                     startupRecovery.ErrorMessage ?? localizationService.GetString("StartupRecoveryFailed", "A previous privacy session could not be fully restored."));
+            }
+            else if (!reconcileResult.Success)
+            {
+                mainViewModel.ReportExternalError(
+                    reconcileResult.ErrorMessage ?? localizationService.GetString("StartupReconcileFailed", "Desired privacy protection could not be applied at startup."));
             }
 
             // Strip --minimized from args before passing to Avalonia to avoid unknown-argument warnings

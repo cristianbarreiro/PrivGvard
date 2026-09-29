@@ -363,4 +363,373 @@ public class ProtectionServiceTests
         Assert.Equal(StandardProtectionState.Inactive, storedState.CameraStandard);
         Assert.Equal(StandardProtectionState.Inactive, storedState.MicrophoneStandard);
     }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_DesiredCameraProtected_ActualCameraUnprotected_ProtectsCamera()
+    {
+        // 1. Desired camera protected + actual camera unprotected → protect camera.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Inactive,
+            MicrophoneSecure = SecureProtectionState.Unavailable
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.True(result.Success);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()), Times.Once);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.MicrophoneStandard);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_DesiredCameraProtected_ActualCameraAlreadyProtected_DoesNotPerformUnnecessaryMutation()
+    {
+        // 2. Desired camera protected + actual camera already protected → do not perform unnecessary mutation.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Inactive
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Active,
+                    SecureState = SecureProtectionState.Available
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.True(result.Success);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+        _protectionMock.Verify(p => p.EnableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_DesiredCameraInactive_ActualCameraUnprotected_NoAction()
+    {
+        // 3. Desired camera inactive + actual camera unprotected → no action.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Inactive,
+            CameraSecure = SecureProtectionState.Unavailable,
+            MicrophoneStandard = StandardProtectionState.Inactive
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.True(result.Success);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+        _protectionMock.Verify(p => p.EnableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_DesiredMicrophoneProtected_ActualMicrophoneUnprotected_ProtectsMicrophone()
+    {
+        // 4. Desired microphone protected + actual microphone unprotected → protect microphone.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Inactive,
+            CameraSecure = SecureProtectionState.Unavailable,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.True(result.Success);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Once);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_BothProtected_ReconcilesBoth()
+    {
+        // 5. Both protected → reconcile both.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.True(result.Success);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()), Times.Once);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_NoDesiredProtections_NoMutation()
+    {
+        // 6. No desired protections → no mutation.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Inactive,
+            CameraSecure = SecureProtectionState.Unavailable,
+            MicrophoneStandard = StandardProtectionState.Inactive,
+            MicrophoneSecure = SecureProtectionState.Unavailable
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.True(result.Success);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+        _protectionMock.Verify(p => p.EnableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+        _storeMock.Verify(s => s.Save(It.IsAny<DesiredState>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_RecoveryFailure_PerformsSafeBehaviorWithoutMutation()
+    {
+        // 7. Recovery failure → safe behavior.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+
+        var failedRecovery = new PrivacyRecoveryResult
+        {
+            IsComplete = false,
+            FailedCount = 1,
+            ErrorMessage = "PnP device node restoration failed"
+        };
+
+        var result = await _service.ReconcileDesiredProtectionAsync(failedRecovery);
+
+        Assert.False(result.Success);
+        Assert.Contains("PnP device node restoration failed", result.ErrorMessage);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+        _protectionMock.Verify(p => p.EnableSecureProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()), Times.Never);
+        _storeMock.Verify(s => s.Save(It.IsAny<DesiredState>()), Times.Never);
+        // DesiredState must remain untouched:
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_StartupMustNotClearDesiredState()
+    {
+        // 8. Startup must not clear DesiredState.
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.True(result.Success);
+        // DesiredState must remain Active and never reset to Inactive:
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+    }
+
+    [Fact]
+    public async Task ReconcileDesiredProtection_CameraFails_MicrophoneStillReconciledIndependently()
+    {
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.GetProtectionStateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FullProtectionState
+            {
+                Camera = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Camera,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                },
+                Microphone = new TargetProtectionStatus
+                {
+                    Target = BlockTarget.Microphone,
+                    StandardState = StandardProtectionState.Inactive,
+                    SecureState = SecureProtectionState.Unavailable
+                }
+            });
+
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Fail("Camera device disabled by external administrator policy"));
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        var result = await _service.ReconcileDesiredProtectionAsync();
+
+        Assert.False(result.Success);
+        Assert.Contains("Camera standard protection failed", result.ErrorMessage);
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Camera, It.IsAny<CancellationToken>()), Times.Once);
+        // Crucial: microphone was STILL reconciled despite camera failure!
+        _protectionMock.Verify(p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()), Times.Once);
+        // DesiredState was NOT cleared by the partial failure:
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+    }
 }

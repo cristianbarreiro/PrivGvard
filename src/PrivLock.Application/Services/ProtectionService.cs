@@ -407,6 +407,137 @@ public sealed class ProtectionService
     }
 
     /// <summary>
+    /// Reconciles the persistent DesiredState with the actual operating-system protection state.
+    /// Reapplies only the protections that DesiredState requires, without treating previous
+    /// PrivacySessions as desired state, never touching inactive scopes, independently reconciling
+    /// Camera and Microphone, and establishing a new PrivacySession for newly applied runtime mutations.
+    /// Aborts safely without mutating platform state if startup recovery was unsafe or incomplete.
+    /// </summary>
+    public async Task<OperationResult> ReconcileDesiredProtectionAsync(
+        PrivacyRecoveryResult? recoveryResult = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsShutdownStarted)
+            return OperationResult.Fail("PrivGvard is shutting down; startup reconciliation was not performed.");
+
+        if (recoveryResult is { SafeToExit: false } or { ConflictCount: > 0 })
+        {
+            var reason = recoveryResult.ErrorMessage ??
+                "A previous privacy session recovery was incomplete or conflicted; startup reconciliation was aborted for safety.";
+            Log.Warning("Startup reconciliation aborted because recovery was incomplete: {Reason}", reason);
+            return OperationResult.Fail(reason);
+        }
+
+        try
+        {
+            var desired = _stateStore.Load();
+            var actual = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+
+            var cameraNeedsStandard = desired.CameraStandard == StandardProtectionState.Active &&
+                                      actual.Camera.StandardState != StandardProtectionState.Active;
+
+            var micNeedsStandard = desired.MicrophoneStandard == StandardProtectionState.Active &&
+                                   actual.Microphone.StandardState != StandardProtectionState.Active;
+
+            var cameraNeedsSecure = desired.CameraStandard == StandardProtectionState.Active &&
+                                    (desired.AdvancedProtectionEnabled || desired.CameraSecure == SecureProtectionState.Active) &&
+                                    actual.Camera.SecureState != SecureProtectionState.Active;
+
+            var micNeedsSecure = desired.MicrophoneStandard == StandardProtectionState.Active &&
+                                 (desired.AdvancedProtectionEnabled || desired.MicrophoneSecure == SecureProtectionState.Active) &&
+                                 actual.Microphone.SecureState != SecureProtectionState.Active;
+
+            if (!cameraNeedsStandard && !micNeedsStandard && !cameraNeedsSecure && !micNeedsSecure)
+            {
+                Log.Information("Startup reconciliation: OS protection already matches desired state; no mutations required");
+                await PublishVerifiedStateAsync(cancellationToken);
+                return OperationResult.Ok();
+            }
+
+            var failures = new List<string>();
+            var details = new List<DeviceOperationDetail>();
+
+            if (cameraNeedsStandard)
+            {
+                Log.Information("Startup reconciliation: Applying Camera standard protection");
+                var camResult = await EnableStandardProtectionAsync(BlockTarget.Camera, cancellationToken);
+                if (!camResult.Success)
+                {
+                    failures.Add($"Camera standard protection failed: {camResult.ErrorMessage}");
+                }
+                else if (camResult.Details != null)
+                {
+                    details.AddRange(camResult.Details);
+                }
+            }
+
+            var cameraStandardActive = cameraNeedsStandard
+                ? !failures.Any(f => f.Contains("Camera standard protection"))
+                : actual.Camera.StandardState == StandardProtectionState.Active;
+
+            if (cameraNeedsSecure && cameraStandardActive)
+            {
+                Log.Information("Startup reconciliation: Applying Camera secure protection");
+                var camSecResult = await EnableSecureProtectionAsync(BlockTarget.Camera, cancellationToken);
+                if (!camSecResult.Success)
+                {
+                    failures.Add($"Camera secure protection failed: {camSecResult.ErrorMessage}");
+                }
+                else if (camSecResult.Details != null)
+                {
+                    details.AddRange(camSecResult.Details);
+                }
+            }
+
+            if (micNeedsStandard)
+            {
+                Log.Information("Startup reconciliation: Applying Microphone standard protection");
+                var micResult = await EnableStandardProtectionAsync(BlockTarget.Microphone, cancellationToken);
+                if (!micResult.Success)
+                {
+                    failures.Add($"Microphone standard protection failed: {micResult.ErrorMessage}");
+                }
+                else if (micResult.Details != null)
+                {
+                    details.AddRange(micResult.Details);
+                }
+            }
+
+            var micStandardActive = micNeedsStandard
+                ? !failures.Any(f => f.Contains("Microphone standard protection"))
+                : actual.Microphone.StandardState == StandardProtectionState.Active;
+
+            if (micNeedsSecure && micStandardActive)
+            {
+                Log.Information("Startup reconciliation: Applying Microphone secure protection");
+                var micSecResult = await EnableSecureProtectionAsync(BlockTarget.Microphone, cancellationToken);
+                if (!micSecResult.Success)
+                {
+                    failures.Add($"Microphone secure protection failed: {micSecResult.ErrorMessage}");
+                }
+                else if (micSecResult.Details != null)
+                {
+                    details.AddRange(micSecResult.Details);
+                }
+            }
+
+            await PublishVerifiedStateAsync(cancellationToken);
+
+            if (failures.Count > 0)
+            {
+                return OperationResult.Fail(string.Join("; ", failures), details);
+            }
+
+            return OperationResult.Ok(details);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected error during startup reconciliation");
+            return OperationResult.Fail($"Startup reconciliation encountered an error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Marks the service as stopping before waiting on the operation gate. This ordering ensures a
     /// queued toggle cannot run after shutdown restoration has completed.
     /// </summary>

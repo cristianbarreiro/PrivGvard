@@ -31,4 +31,17 @@ public sealed class PrivacyRecoveryService
             result.FailedCount);
         return result;
     }
+
+    public async Task<OperationResult> ReconcileAtStartupAsync(
+        PrivacyRecoveryResult? recoveryResult = null,
+        CancellationToken cancellationToken = default)
+    {
+        Log.Information("Reconciling persistent desired protection state with actual OS state");
+        var result = await _protectionService.ReconcileDesiredProtectionAsync(recoveryResult, cancellationToken);
+        Log.Information(
+            "Startup reconciliation finished: Success={Success}, Error={Error}",
+            result.Success,
+            result.ErrorMessage);
+        return result;
+    }
 }

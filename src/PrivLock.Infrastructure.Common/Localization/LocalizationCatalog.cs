@@ -189,6 +189,7 @@ public static class LocalizationCatalog
         ["ErrorLanguagePreference"] = "No se pudo guardar la preferencia de idioma",
         ["ErrorAutostart"] = "No se pudo actualizar la configuración de inicio automático",
         ["StartupRecoveryFailed"] = "No se pudo restaurar completamente una sesión de privacidad anterior.",
+        ["StartupReconcileFailed"] = "No se pudo aplicar la protección deseada al iniciar el sistema.",
         ["ErrorShutdownRestore"] = "PrivGvard no pudo restaurar con seguridad todos los cambios. Se canceló la salida.",
         ["ErrorShutdownFailed"] = "Falló la restauración de cierre: {0}"
     };
@@ -376,6 +377,7 @@ public static class LocalizationCatalog
         ["ErrorLanguagePreference"] = "Failed to save language preference",
         ["ErrorAutostart"] = "Failed to update autostart setting",
         ["StartupRecoveryFailed"] = "A previous privacy session could not be fully restored.",
+        ["StartupReconcileFailed"] = "Desired privacy protection could not be applied at startup.",
         ["ErrorShutdownRestore"] = "PrivGvard could not safely restore every owned change. Exit was cancelled.",
         ["ErrorShutdownFailed"] = "Shutdown restoration failed: {0}"
     };
