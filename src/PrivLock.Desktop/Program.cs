@@ -42,6 +42,10 @@ public static class Program
             return 1;
         }
 
+        // 2. Initialize standard logging
+        LoggingConfiguration.Initialize();
+        Log.Information("=== PrivGvard Desktop Starting ===");
+
         SafeUninstallPlan? safeUninstallPlan = null;
         if (SafeUninstallLauncher.IsRequested(args))
         {
@@ -51,16 +55,14 @@ public static class Program
                     out safeUninstallPlan,
                     out var validationError))
             {
-                System.Diagnostics.Trace.TraceError(
-                    "Rejected safe-uninstall wrapper request: {0}",
-                    validationError ?? "unknown validation failure");
+                var validationMsg = validationError ?? "unknown validation failure";
+                Log.Error("Rejected safe-uninstall wrapper request: {Error}", validationMsg);
+                var isQuiet = args.Any(a => string.Equals(a, SafeUninstallLauncher.QuietSwitch, StringComparison.OrdinalIgnoreCase));
+                SafeUninstallLauncher.ShowErrorFeedback(validationMsg, isQuiet);
+                Log.CloseAndFlush();
                 return 1;
             }
         }
-
-        // 2. Initialize standard logging
-        LoggingConfiguration.Initialize();
-        Log.Information("=== PrivGvard Desktop Starting ===");
 
         // 3. Global exception handlers
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
@@ -168,39 +170,63 @@ public static class Program
 
                 _shutdownCoordinator = null;
 
-                var uninstallerStarted = true;
-                if (safeUninstallPlan != null && restore.SafeToExit && workerStopped)
+                if (safeUninstallPlan != null)
                 {
-                    string? launchError;
-                    if (!OperatingSystem.IsWindows())
+                    SafeUninstallResult uninstallResult;
+                    if (!restore.SafeToExit)
                     {
-                        uninstallerStarted = false;
-                        launchError = "Safe uninstall is supported only on Windows.";
+                        uninstallResult = new SafeUninstallResult(
+                            SafeUninstallStatus.RestoreFailed,
+                            "PrivGvard could not safely restore system privacy state prior to uninstallation.");
+                        Log.Error("Safe uninstall aborted: Status={Status}, Message={Message}", uninstallResult.Status, uninstallResult.Message);
+                        SafeUninstallLauncher.ShowErrorFeedback(uninstallResult.Message!, safeUninstallPlan.Quiet);
                     }
-                    else if (singleInstanceGuard is not
-                             Platform.Windows.System.WindowsSingleInstanceGuard windowsGuard)
+                    else if (!workerStopped)
                     {
-                        uninstallerStarted = false;
-                        launchError = "The Windows uninstall gate is unavailable.";
+                        uninstallResult = new SafeUninstallResult(
+                            SafeUninstallStatus.WorkerNotStopped,
+                            "PrivGvard could not prove elevated worker quiescence prior to uninstallation.");
+                        Log.Error("Safe uninstall aborted: Status={Status}, Message={Message}", uninstallResult.Status, uninstallResult.Message);
+                        SafeUninstallLauncher.ShowErrorFeedback(uninstallResult.Message!, safeUninstallPlan.Quiet);
+                    }
+                    else if (!OperatingSystem.IsWindows() ||
+                             singleInstanceGuard is not Platform.Windows.System.WindowsSingleInstanceGuard windowsGuard)
+                    {
+                        uninstallResult = new SafeUninstallResult(
+                            SafeUninstallStatus.LaunchFailed,
+                            "The Windows uninstall gate is unavailable.");
+                        Log.Error("Safe uninstall aborted: Status={Status}, Message={Message}", uninstallResult.Status, uninstallResult.Message);
+                        SafeUninstallLauncher.ShowErrorFeedback(uninstallResult.Message!, safeUninstallPlan.Quiet);
                     }
                     else
                     {
-                        uninstallerStarted = SafeUninstallLauncher.TryLaunch(
+                        uninstallResult = SafeUninstallLauncher.TryLaunch(
                             safeUninstallPlan,
-                            windowsGuard.ReleaseUninstallGateForHandoff,
-                            out launchError);
+                            windowsGuard.ReleaseUninstallGateForHandoff);
+
+                        if (!uninstallResult.Success &&
+                            uninstallResult.Status != SafeUninstallStatus.UserCancelled &&
+                            !string.IsNullOrEmpty(uninstallResult.Message))
+                        {
+                            SafeUninstallLauncher.ShowErrorFeedback(uninstallResult.Message, safeUninstallPlan.Quiet);
+                        }
                     }
 
-                    if (!uninstallerStarted)
-                        Log.Error("Safe uninstall launch failed: {Error}", launchError);
+                    Log.Information(
+                        "Safe uninstall workflow finished. Status={Status}, Success={Success}, ExitCode={ExitCode}",
+                        uninstallResult.Status,
+                        uninstallResult.Success,
+                        uninstallResult.Success ? 0 : 1);
+                    Log.CloseAndFlush();
+                    return uninstallResult.Success ? 0 : 1;
                 }
 
+                // CLI --unblock-and-exit path
                 Log.Information(
-                    "CLI recovery complete. SafeToExit={SafeToExit}, UninstallerStarted={UninstallerStarted}",
-                    restore.SafeToExit && workerStopped,
-                    uninstallerStarted);
+                    "CLI recovery complete. SafeToExit={SafeToExit}",
+                    restore.SafeToExit);
                 Log.CloseAndFlush();
-                return restore.SafeToExit && workerStopped && uninstallerStarted ? 0 : 1;
+                return restore.SafeToExit ? 0 : 1;
             }
 
             // 8. Initialize localization
