@@ -19,9 +19,28 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
     private const string AppName = "PrivGvard";
     private const string LegacyAppName = "PrivLock";
 
+    private readonly string _runKeyPath;
+    private readonly string _startupApprovedKeyPath;
+    private readonly Func<string?> _processPathProvider;
+
+    public WindowsAutostartProvider()
+        : this(RunKeyPath, StartupApprovedKeyPath, () => Environment.ProcessPath)
+    {
+    }
+
+    internal WindowsAutostartProvider(
+        string runKeyPath,
+        string startupApprovedKeyPath,
+        Func<string?>? processPathProvider = null)
+    {
+        _runKeyPath = runKeyPath;
+        _startupApprovedKeyPath = startupApprovedKeyPath;
+        _processPathProvider = processPathProvider ?? (() => Environment.ProcessPath);
+    }
+
     /// <summary>
-    /// Returns true only when the Run registry value exists AND has not been disabled
-    /// by the user via Task Manager or Settings > Apps > Startup.
+    /// Returns true only when the Run registry value exists, points to a valid file on disk,
+    /// AND has not been disabled by the user via Task Manager or Settings > Apps > Startup.
     ///
     /// Windows disables startup entries by writing a 12-byte REG_BINARY value into
     /// HKCU\...\StartupApproved\Run. When the first three bytes are 03 00 00 (or any
@@ -38,7 +57,7 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
             }
 
             // 1. Check whether the Run value exists at all
-            using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath);
+            using var runKey = Registry.CurrentUser.OpenSubKey(_runKeyPath);
             var runValue = runKey?.GetValue(AppName) ?? runKey?.GetValue(LegacyAppName);
             if (runValue == null)
             {
@@ -46,7 +65,17 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 return false;
             }
 
-            // 2. Check whether Windows has disabled it through Task Manager / Settings.
+            // 2. Validate that the registered executable path still exists on disk
+            var registeredPath = ExtractExecutablePath(runValue.ToString());
+            if (!string.IsNullOrEmpty(registeredPath) && !File.Exists(registeredPath))
+            {
+                Log.Warning(
+                    "Autostart registry value points to an executable that no longer exists on disk: {Path}",
+                    registeredPath);
+                return false;
+            }
+
+            // 3. Check whether Windows has disabled it through Task Manager / Settings.
             // Determine which name is actually registered and check only that one.
             var activeName = runKey?.GetValue(AppName) != null ? AppName : LegacyAppName;
             if (IsDisabledByStartupApproved(activeName))
@@ -69,7 +98,7 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
     {
         try
         {
-            var exePath = Environment.ProcessPath;
+            var exePath = _processPathProvider();
             if (string.IsNullOrEmpty(exePath))
             {
                 var error = "Cannot determine current process path for autostart registration";
@@ -87,7 +116,7 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                     "Path: {Path}", exePath);
             }
 
-            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+            using var key = Registry.CurrentUser.OpenSubKey(_runKeyPath, writable: true);
             if (key == null)
             {
                 var error = "Failed to open Run registry key for writing";
@@ -134,7 +163,7 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 Log.Information("Disabling startup in MSIX packaged context ({Package})", PackageIdentityHelper.PackageFullName);
             }
 
-            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true);
+            using var key = Registry.CurrentUser.OpenSubKey(_runKeyPath, writable: true);
             if (key != null)
             {
                 key.DeleteValue(AppName, throwOnMissingValue: false);
@@ -159,11 +188,11 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
     /// Checks whether a specific startup entry has been disabled by Windows Task Manager
     /// via the StartupApproved\Run registry overlay.
     /// </summary>
-    private static bool IsDisabledByStartupApproved(string valueName)
+    private bool IsDisabledByStartupApproved(string valueName)
     {
         try
         {
-            using var approvedKey = Registry.CurrentUser.OpenSubKey(StartupApprovedKeyPath);
+            using var approvedKey = Registry.CurrentUser.OpenSubKey(_startupApprovedKeyPath);
             if (approvedKey == null)
                 return false;
 
@@ -191,11 +220,11 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
     /// treats the Run entry as enabled. This is necessary when the user explicitly enables
     /// autostart from PrivGvard after having previously disabled it from Task Manager.
     /// </summary>
-    private static void RemoveStartupApprovedDisable(string valueName)
+    private void RemoveStartupApprovedDisable(string valueName)
     {
         try
         {
-            using var approvedKey = Registry.CurrentUser.OpenSubKey(StartupApprovedKeyPath, writable: true);
+            using var approvedKey = Registry.CurrentUser.OpenSubKey(_startupApprovedKeyPath, writable: true);
             if (approvedKey?.GetValue(valueName) != null)
             {
                 approvedKey.DeleteValue(valueName, throwOnMissingValue: false);
@@ -206,5 +235,26 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
         {
             Log.Debug(ex, "Could not remove StartupApproved\\Run override for {Name}", valueName);
         }
+    }
+
+    /// <summary>
+    /// Extracts the executable path from a Run registry command-line string.
+    /// Handles quoted paths (\"C:\Program Files\...\PrivGvard.exe\" --minimized)
+    /// and unquoted paths (C:\PrivGvard\PrivGvard.exe --minimized).
+    /// </summary>
+    internal static string? ExtractExecutablePath(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine))
+            return null;
+
+        var trimmed = commandLine.Trim();
+        if (trimmed.StartsWith('"'))
+        {
+            var endQuote = trimmed.IndexOf('"', 1);
+            return endQuote > 1 ? trimmed[1..endQuote] : null;
+        }
+
+        var spaceIndex = trimmed.IndexOf(' ');
+        return spaceIndex > 0 ? trimmed[..spaceIndex] : trimmed;
     }
 }

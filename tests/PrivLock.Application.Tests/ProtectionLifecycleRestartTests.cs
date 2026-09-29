@@ -380,6 +380,77 @@ public class ProtectionLifecycleRestartTests
         Assert.Equal(StandardProtectionState.Active, desired.CameraStandard);
     }
 
+    [Fact]
+    public async Task Lifecycle_WindowsAutostart_Boot_StartupRecovery_Reconcile_ProtectsAndPreservesAutostartState()
+    {
+        // Validates:
+        // Windows boot
+        //     ↓
+        // PrivGvard starts automatically (Autostart only starts the process)
+        //     ↓
+        // startup recovery
+        //     ↓
+        // desired protection reconciliation
+        //     ↓
+        // privacy protection becomes active
+        //     ↓
+        // application remains available without blocking normal Windows operation
+
+        var env = new LifecycleEnvironment();
+
+        // 1. Initial configuration: User has autostart enabled and protects both camera and microphone
+        var app1 = env.CreateApplicationInstance();
+        var enableBoth = await app1.ProtectionService.EnableStandardProtectionAsync(BlockTarget.Both);
+        Assert.True(enableBoth.Success);
+
+        var stateStore = env.StateStore;
+        var desiredBeforeShutdown = stateStore.Load();
+        desiredBeforeShutdown.Autostart = true;
+        stateStore.Save(desiredBeforeShutdown);
+
+        // 2. Windows shutdown: coordinated restore restores OS runtime state
+        var shutdown = await app1.ShutdownCoordinator.RestoreAsync("WindowsShutdown");
+        Assert.True(shutdown.SafeToExit);
+
+        var osAfterShutdown = await env.ProtectionProvider.GetProtectionStateAsync();
+        Assert.False(osAfterShutdown.Camera.IsProtected);
+        Assert.False(osAfterShutdown.Microphone.IsProtected);
+
+        // DesiredState must survive shutdown intact:
+        var desiredAfterShutdown = stateStore.Load();
+        Assert.True(desiredAfterShutdown.Autostart);
+        Assert.Equal(StandardProtectionState.Active, desiredAfterShutdown.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, desiredAfterShutdown.MicrophoneStandard);
+
+        // 3. Windows boot: PrivGvard is launched via Autostart registry Run entry (--minimized)
+        // Autostart provider only launched the process. The application lifecycle performs recovery and reconciliation.
+        var appBoot = env.CreateApplicationInstance();
+
+        // 4. Startup recovery runs first
+        var recovery = await appBoot.RecoveryService.RecoverAtStartupAsync();
+        Assert.True(recovery.SafeToExit);
+        Assert.False(recovery.HadRecoveryWork);
+
+        // 5. Desired protection reconciliation runs next
+        var reconcile = await appBoot.RecoveryService.ReconcileAtStartupAsync(recovery);
+        Assert.True(reconcile.Success);
+
+        // 6. Privacy protection is now active on OS devices
+        var osAfterReconcile = await env.ProtectionProvider.GetProtectionStateAsync();
+        Assert.True(osAfterReconcile.Camera.IsProtected);
+        Assert.True(osAfterReconcile.Microphone.IsProtected);
+
+        // A new active privacy session journal is established in WAL
+        Assert.NotNull(env.SessionStore.Current);
+        Assert.True(env.SessionStore.Current!.IsActive);
+
+        // 7. Desired state remains intact and preserved
+        var desiredFinal = stateStore.Load();
+        Assert.True(desiredFinal.Autostart);
+        Assert.Equal(StandardProtectionState.Active, desiredFinal.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, desiredFinal.MicrophoneStandard);
+    }
+
     // --- Test Harness & Doubles ---
 
     private sealed record ApplicationInstance(
