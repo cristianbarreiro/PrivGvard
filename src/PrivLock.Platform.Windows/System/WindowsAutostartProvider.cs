@@ -116,10 +116,10 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                     "Path: {Path}", exePath);
             }
 
-            using var key = Registry.CurrentUser.OpenSubKey(_runKeyPath, writable: true);
+            using var key = Registry.CurrentUser.CreateSubKey(_runKeyPath, writable: true);
             if (key == null)
             {
-                var error = "Failed to open Run registry key for writing";
+                var error = "Failed to open or create Run registry key for writing";
                 Log.Error(error);
                 return OperationResult.Fail(error);
             }

@@ -290,4 +290,21 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         Assert.False(result.Success);
         Assert.Contains("Cannot determine current process path", result.ErrorMessage);
     }
+
+    [Fact]
+    public void EnableAutostart_WhenRunKeyDoesNotExist_CreatesKeyAndSucceeds()
+    {
+        var nonExistentRunPath = $@"{_testRootKeyPath}\NonExistent_{Guid.NewGuid():N}\Run";
+        var provider = new WindowsAutostartProvider(
+            nonExistentRunPath,
+            _testStartupApprovedKeyPath,
+            () => _dummyExePath);
+
+        var result = provider.EnableAutostart();
+
+        Assert.True(result.Success, result.ErrorMessage);
+        using var createdKey = Registry.CurrentUser.OpenSubKey(nonExistentRunPath);
+        Assert.NotNull(createdKey);
+        Assert.Equal($"\"{_dummyExePath}\" --minimized", createdKey.GetValue("PrivGvard"));
+    }
 }
