@@ -240,4 +240,127 @@ public class ProtectionServiceTests
             p => p.EnableStandardProtectionAsync(BlockTarget.Microphone, It.IsAny<CancellationToken>()),
             Times.Never);
     }
+
+    [Fact]
+    public async Task EnablingProtection_PersistsDesiredState_ForCameraAndMicrophone()
+    {
+        var storedState = new DesiredState();
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        // Act 1: Enable camera
+        var camResult = await _service.EnableStandardProtectionAsync(BlockTarget.Camera);
+        Assert.True(camResult.Success);
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(SecureProtectionState.Available, storedState.CameraSecure);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.MicrophoneStandard);
+
+        // Act 2: Enable microphone
+        var micResult = await _service.EnableStandardProtectionAsync(BlockTarget.Microphone);
+        Assert.True(micResult.Success);
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Available, storedState.MicrophoneSecure);
+    }
+
+    [Fact]
+    public async Task ShutdownRestoration_DoesNotEraseDesiredState()
+    {
+        var activeState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Active,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Active
+        };
+        _storeMock.Setup(s => s.Load()).Returns(activeState);
+
+        _protectionMock.Setup(p => p.DisableSecureProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+        _protectionMock.Setup(p => p.DisableStandardProtectionAsync(BlockTarget.Both, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        var shutdownResult = await _service.BeginShutdownAndRestoreAsync("UserExit");
+
+        Assert.True(shutdownResult.SafeToExit);
+        // Shutdown restoration restores OS state, but MUST NOT erase or overwrite DesiredState:
+        _storeMock.Verify(s => s.Save(It.IsAny<DesiredState>()), Times.Never);
+        var remaining = _storeMock.Object.Load();
+        Assert.Equal(StandardProtectionState.Active, remaining.CameraStandard);
+        Assert.Equal(SecureProtectionState.Active, remaining.CameraSecure);
+        Assert.Equal(StandardProtectionState.Active, remaining.MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Active, remaining.MicrophoneSecure);
+    }
+
+    [Fact]
+    public async Task ExplicitUserDisable_ErasesCorrespondingDesiredState()
+    {
+        var storedState = new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
+        };
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.DisableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        // Explicit disable of camera
+        var disableCam = await _service.DisableStandardProtectionAsync(BlockTarget.Camera);
+        Assert.True(disableCam.Success);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.CameraStandard);
+        Assert.Equal(SecureProtectionState.Unavailable, storedState.CameraSecure);
+        // Microphone remains protected:
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Available, storedState.MicrophoneSecure);
+
+        // Explicit disable of microphone
+        var disableMic = await _service.DisableStandardProtectionAsync(BlockTarget.Microphone);
+        Assert.True(disableMic.Success);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Unavailable, storedState.MicrophoneSecure);
+    }
+
+    [Fact]
+    public async Task CameraAndMicrophoneStates_RemainIndependent()
+    {
+        var storedState = new DesiredState();
+        _storeMock.Setup(s => s.Load()).Returns(() => storedState);
+        _storeMock.Setup(s => s.Save(It.IsAny<DesiredState>()))
+            .Callback<DesiredState>(s => storedState = s);
+
+        _protectionMock.Setup(p => p.EnableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+        _protectionMock.Setup(p => p.DisableStandardProtectionAsync(It.IsAny<BlockTarget>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OperationResult.Ok());
+
+        // 1. Enable Camera only
+        await _service.EnableStandardProtectionAsync(BlockTarget.Camera);
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.MicrophoneStandard);
+
+        // 2. Enable Microphone
+        await _service.EnableStandardProtectionAsync(BlockTarget.Microphone);
+        Assert.Equal(StandardProtectionState.Active, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+
+        // 3. Disable Camera only -> Microphone remains active
+        await _service.DisableStandardProtectionAsync(BlockTarget.Camera);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Active, storedState.MicrophoneStandard);
+
+        // 4. Disable Microphone -> Both inactive
+        await _service.DisableStandardProtectionAsync(BlockTarget.Microphone);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.CameraStandard);
+        Assert.Equal(StandardProtectionState.Inactive, storedState.MicrophoneStandard);
+    }
 }

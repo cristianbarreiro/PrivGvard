@@ -120,7 +120,7 @@ public sealed class ShutdownCoordinatorTests
     }
 
     [Fact]
-    public async Task CompletedRestore_DesiredStateSaveFailure_IsRetriedByNextExitSignal()
+    public async Task ShutdownRestore_PreservesDesiredProtectionState_DoesNotEraseOnExit()
     {
         var restoredDevice = PrivacyRecoveryTestData.Device(
             "restored-camera",
@@ -133,16 +133,13 @@ public sealed class ShutdownCoordinatorTests
         terminalSession.CompletedAtUtc = terminalSession.UpdatedAtUtc;
         var store = new RecordingPrivacySessionStore(terminalSession);
         var platform = new ScriptedPrivacySessionPlatformAdapter();
-        var dependencies = new RecoveryHostDependencies
-        {
-            SaveFailureFactory = attempt => attempt == 1
-                ? new IOException("preferences temporarily unavailable")
-                : null
-        };
+        var dependencies = new RecoveryHostDependencies();
         dependencies.SetDesiredState(new DesiredState
         {
             CameraStandard = StandardProtectionState.Active,
-            CameraSecure = SecureProtectionState.Available
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
         });
         var sessions = new PrivacySessionService(store, platform);
         var protection = new ProtectionService(
@@ -158,18 +155,21 @@ public sealed class ShutdownCoordinatorTests
 
         Assert.True(first.SafeToExit);
         Assert.True(first.HadPersistedSession);
-        Assert.Equal(1, dependencies.SaveAttempts);
-        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
+        // Shutdown restoration restores runtime state, but does not overwrite or erase DesiredState:
+        Assert.Equal(0, dependencies.SaveCount);
+        var state = dependencies.Load();
+        Assert.Equal(StandardProtectionState.Active, state.CameraStandard);
+        Assert.Equal(SecureProtectionState.Available, state.CameraSecure);
+        Assert.Equal(StandardProtectionState.Active, state.MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Available, state.MicrophoneSecure);
 
         var retryTask = coordinator.RestoreAsync("ApplicationLifetimeExited");
-        Assert.NotSame(firstTask, retryTask);
+        Assert.Same(firstTask, retryTask);
         var retry = await retryTask;
 
         Assert.True(retry.SafeToExit);
-        Assert.True(retry.HadPersistedSession);
-        Assert.Equal(2, dependencies.SaveAttempts);
-        Assert.Equal(1, dependencies.SaveCount);
-        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
+        Assert.Equal(0, dependencies.SaveCount);
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
     }
 
     [Fact]
@@ -186,12 +186,7 @@ public sealed class ShutdownCoordinatorTests
         terminalSession.CompletedAtUtc = terminalSession.UpdatedAtUtc;
         var store = new RecordingPrivacySessionStore(terminalSession);
         var platform = new ScriptedPrivacySessionPlatformAdapter();
-        var dependencies = new RecoveryHostDependencies
-        {
-            SaveFailureFactory = attempt => attempt == 1
-                ? new IOException("first desired-state reset failed")
-                : null
-        };
+        var dependencies = new RecoveryHostDependencies();
         dependencies.SetDesiredState(new DesiredState
         {
             CameraStandard = StandardProtectionState.Active,
@@ -206,12 +201,18 @@ public sealed class ShutdownCoordinatorTests
             sessions);
 
         var startup = await protection.RecoverPreviousSessionAsync();
+        // Startup recovery does not erase DesiredState:
+        Assert.True(startup.SafeToExit);
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
+        Assert.Equal(0, dependencies.SaveCount);
+
+        // Explicit user disable DOES erase the corresponding DesiredState:
         var disable = await protection.DisableStandardProtectionAsync(BlockTarget.Camera);
 
-        Assert.True(startup.SafeToExit);
         Assert.True(disable.Success);
         Assert.DoesNotContain("older PrivLock version", disable.ErrorMessage ?? string.Empty);
-        Assert.Equal(2, dependencies.SaveAttempts);
+        Assert.Equal(1, dependencies.SaveAttempts);
+        Assert.Equal(1, dependencies.SaveCount);
         Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
     }
 

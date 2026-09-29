@@ -24,14 +24,13 @@ public sealed class ProtectionService
     private readonly bool _allowUntrackedMutations;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private int _shutdownStarted;
-    private int _desiredStateCleanupPending;
 
     public event Action<FullProtectionState>? StateChanged;
 
     public PlatformCapabilities Capabilities => _capabilityProvider.Capabilities;
     public PlatformInfo PlatformInfo => _capabilityProvider.PlatformInfo;
     public bool IsShutdownStarted => Volatile.Read(ref _shutdownStarted) != 0;
-    internal bool HasPendingDesiredStateCleanup => Volatile.Read(ref _desiredStateCleanupPending) != 0;
+    internal bool HasPendingDesiredStateCleanup => false;
     public bool IsAdvancedProtectionEnabled => _stateStore.Load().AdvancedProtectionEnabled;
 
     public ProtectionService(
@@ -396,11 +395,9 @@ public sealed class ProtectionService
             {
                 return LegacyUntrackedRecoveryResult();
             }
-            if (result.TrackingSupported &&
-                result.SafeToExit &&
-                result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredBeforeRecovery))
-                ResetDesiredProtectionStateBestEffort("startup recovery");
+            // DesiredState represents durable user intent across restarts and shutdowns;
+            // startup recovery restores any unfinished runtime mutations to a safe baseline
+            // without clearing what the user chose to protect.
             return result;
         }
         finally
@@ -455,11 +452,9 @@ public sealed class ProtectionService
                 HasAnyDesiredProtection(desiredAfterRecovery))
                 result = LegacyUntrackedRecoveryResult();
 
-            if (result.SafeToExit &&
-                result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredAfterRecovery) &&
-                (result.TrackingSupported || _allowUntrackedMutations))
-                ResetDesiredProtectionStateBestEffort("shutdown recovery");
+            // Invariant: Restoring the runtime OS state during shutdown MUST NOT implicitly mean
+            // that the user disabled protection. DesiredState survives normal application shutdown
+            // and Windows shutdown. Only explicit user disable operations modify DesiredState.
             return result;
         }
         finally
@@ -776,32 +771,6 @@ public sealed class ProtectionService
             desired.MicrophoneSecure = SecureProtectionState.Unavailable;
         }
         _stateStore.Save(desired);
-    }
-
-    private void ResetDesiredProtectionState()
-    {
-        var desired = _stateStore.Load();
-        desired.CameraStandard = StandardProtectionState.Inactive;
-        desired.CameraSecure = SecureProtectionState.Unavailable;
-        desired.MicrophoneStandard = StandardProtectionState.Inactive;
-        desired.MicrophoneSecure = SecureProtectionState.Unavailable;
-        _stateStore.Save(desired);
-    }
-
-    private void ResetDesiredProtectionStateBestEffort(string context)
-    {
-        try
-        {
-            ResetDesiredProtectionState();
-            Interlocked.Exchange(ref _desiredStateCleanupPending, 0);
-        }
-        catch (Exception ex)
-        {
-            // The recovery journal and verified native state remain authoritative. A preferences
-            // file failure must not turn a completed hardware restore into an unsafe shutdown.
-            Interlocked.Exchange(ref _desiredStateCleanupPending, 1);
-            Log.Error(ex, "Failed to reset desired protection state after {Context}", context);
-        }
     }
 
     private OperationResult ToOperationResult(PrivacyRecoveryResult result)
