@@ -242,11 +242,14 @@ public sealed class ShutdownCoordinatorTests
     }
 
     [Fact]
-    public async Task LegacyDesiredBlockWithoutJournal_IsPreservedAndReportedUnsafe()
+    public async Task LegacyEvidenceWithoutJournal_IsPreservedAndReportedUnsafe()
     {
         var store = new RecordingPrivacySessionStore();
         var platform = new ScriptedPrivacySessionPlatformAdapter();
-        var dependencies = new RecoveryHostDependencies();
+        var dependencies = new RecoveryHostDependencies
+        {
+            HasLegacyEvidenceResult = true
+        };
         dependencies.SetDesiredState(new DesiredState
         {
             CameraStandard = StandardProtectionState.Active,
@@ -258,7 +261,8 @@ public sealed class ShutdownCoordinatorTests
             dependencies,
             dependencies,
             dependencies,
-            sessions);
+            sessions,
+            dependencies);
 
         var startup = await protection.RecoverPreviousSessionAsync();
         var shutdown = await protection.BeginShutdownAndRestoreAsync("LegacyExit");

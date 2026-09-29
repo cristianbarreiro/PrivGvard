@@ -331,6 +331,7 @@ public static class Program
     {
         // 1. Common Storage & Infrastructure
         services.AddSingleton<IStateStore, FileStateStore>();
+        services.AddSingleton<ILegacyArtifactDetector, DefaultLegacyArtifactDetector>();
         services.AddSingleton<IActivePrivacySessionMarker>(_ =>
             OperatingSystem.IsWindows()
                 ? new FileActivePrivacySessionMarker(GetWindowsActiveMarkerDirectory())

@@ -21,6 +21,7 @@ public sealed class ProtectionService
     private readonly IPlatformCapabilityProvider _capabilityProvider;
     private readonly IStateStore _stateStore;
     private readonly PrivacySessionService _privacySessions;
+    private readonly ILegacyArtifactDetector _legacyDetector;
     private readonly bool _allowUntrackedMutations;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private int _shutdownStarted;
@@ -45,6 +46,25 @@ public sealed class ProtectionService
             capabilityProvider,
             stateStore,
             privacySessions,
+            legacyDetector: null,
+            allowUntrackedMutations: false)
+    {
+    }
+
+    public ProtectionService(
+        IDeviceProtectionProvider protectionProvider,
+        IDeviceDetector deviceDetector,
+        IPlatformCapabilityProvider capabilityProvider,
+        IStateStore stateStore,
+        PrivacySessionService privacySessions,
+        ILegacyArtifactDetector? legacyDetector)
+        : this(
+            protectionProvider,
+            deviceDetector,
+            capabilityProvider,
+            stateStore,
+            privacySessions,
+            legacyDetector,
             allowUntrackedMutations: false)
     {
     }
@@ -55,6 +75,7 @@ public sealed class ProtectionService
         IPlatformCapabilityProvider capabilityProvider,
         IStateStore stateStore,
         PrivacySessionService privacySessions,
+        ILegacyArtifactDetector? legacyDetector,
         bool allowUntrackedMutations)
     {
         _protectionProvider = protectionProvider;
@@ -62,6 +83,7 @@ public sealed class ProtectionService
         _capabilityProvider = capabilityProvider;
         _stateStore = stateStore;
         _privacySessions = privacySessions;
+        _legacyDetector = legacyDetector ?? new PrivLock.Infrastructure.Common.Storage.DefaultLegacyArtifactDetector();
         _allowUntrackedMutations = allowUntrackedMutations;
     }
 
@@ -82,6 +104,7 @@ public sealed class ProtectionService
             new PrivacySessionService(
                 new VolatilePrivacySessionStore(),
                 new UnsupportedPrivacySessionPlatformAdapter()),
+            legacyDetector: null,
             allowUntrackedMutations: true)
     {
     }
@@ -386,12 +409,11 @@ public sealed class ProtectionService
         await _operationGate.WaitAsync(cancellationToken);
         try
         {
-            var desiredBeforeRecovery = _stateStore.Load();
             var result = await _privacySessions.RecoverUnfinishedSessionAsync(cancellationToken);
             if (!_allowUntrackedMutations &&
                 result.SafeToExit &&
                 !result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredBeforeRecovery))
+                _legacyDetector.HasLegacyEvidence())
             {
                 return LegacyUntrackedRecoveryResult();
             }
@@ -576,11 +598,10 @@ public sealed class ProtectionService
                 }
             }
 
-            var desiredAfterRecovery = _stateStore.Load();
             if (!_allowUntrackedMutations &&
                 result.SafeToExit &&
                 !result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredAfterRecovery))
+                _legacyDetector.HasLegacyEvidence())
                 result = LegacyUntrackedRecoveryResult();
 
             // Invariant: Restoring the runtime OS state during shutdown MUST NOT implicitly mean
@@ -784,7 +805,7 @@ public sealed class ProtectionService
                 return recovery;
             if (!recovery.HadRecoveryWork &&
                 !recovery.HadPersistedSession &&
-                IsDesiredScopeActive(_stateStore.Load(), layer, target))
+                _legacyDetector.HasLegacyEvidence())
                 return LegacyUntrackedRecoveryResult();
             if (!recovery.HadRecoveryWork)
             {
@@ -817,7 +838,7 @@ public sealed class ProtectionService
 
         if (!_allowUntrackedMutations)
         {
-            return IsDesiredScopeActive(_stateStore.Load(), layer, target)
+            return _legacyDetector.HasLegacyEvidence()
                 ? LegacyUntrackedRecoveryResult()
                 : PrivacyRecoveryResult.Unsupported();
         }
@@ -941,32 +962,6 @@ public sealed class ProtectionService
             "A protection state from an older PrivLock version was detected without an exact recovery snapshot. " +
             "It was preserved; automatic broad unblocking is unsafe. Review the affected operating-system privacy settings manually."
     };
-
-    private static bool HasAnyDesiredProtection(DesiredState desired) =>
-        desired.CameraStandard == StandardProtectionState.Active ||
-        desired.MicrophoneStandard == StandardProtectionState.Active ||
-        desired.CameraSecure == SecureProtectionState.Active ||
-        desired.MicrophoneSecure == SecureProtectionState.Active;
-
-    private static bool IsDesiredScopeActive(
-        DesiredState desired,
-        ProtectionLayer layer,
-        BlockTarget target)
-    {
-        var camera = layer == ProtectionLayer.Standard
-            ? desired.CameraStandard == StandardProtectionState.Active
-            : desired.CameraSecure == SecureProtectionState.Active;
-        var microphone = layer == ProtectionLayer.Standard
-            ? desired.MicrophoneStandard == StandardProtectionState.Active
-            : desired.MicrophoneSecure == SecureProtectionState.Active;
-        return target switch
-        {
-            BlockTarget.Camera => camera,
-            BlockTarget.Microphone => microphone,
-            BlockTarget.Both => camera || microphone,
-            _ => false
-        };
-    }
 
     private static bool? IsActualScopeActive(
         FullProtectionState state,

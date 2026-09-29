@@ -10,18 +10,23 @@ using Xunit;
 namespace PrivLock.Platform.Windows.Tests;
 
 /// <summary>
-/// End-to-end Windows integration lifecycle tests executing the full real lifecycle:
+/// Deterministic Windows integration lifecycle tests simulating the complete lifecycle sequence:
 ///
-/// Scenario A: Protect camera → reboot Windows → PrivGvard autostarts → camera becomes protected.
-/// Scenario B: Protect microphone → reboot → microphone becomes protected.
-/// Scenario C: Protect both → reboot → both become protected.
-/// Scenario D: Protect camera → explicitly disable → reboot → camera remains unprotected.
+/// Scenario A: Protect camera → simulate Windows reboot → PrivGvard autostarts → camera becomes protected.
+/// Scenario B: Protect microphone → simulate Windows reboot → microphone becomes protected.
+/// Scenario C: Protect both → simulate Windows reboot → both become protected.
+/// Scenario D: Protect camera → explicitly disable → simulate Windows reboot → camera remains unprotected.
 /// Scenario E: Protect camera → close application normally → start application again → camera becomes protected.
 /// Scenario F: Protect camera → terminate process unexpectedly → restart → recovery occurs safely → desired protection is reconciled.
 /// Scenario G: Change external OS state while PrivGvard is stopped → start PrivGvard → verify external changes are not blindly overwritten.
 ///
-/// Uses real FileStateStore (state.json), real FilePrivacySessionStore (session.json WAL with .bak shadow),
-/// and real WindowsAutostartProvider (Registry Run & StartupApproved).
+/// NOTE: These tests are deterministic lifecycle simulations using:
+/// - Real FileStateStore (state.json with atomic replace)
+/// - Real FilePrivacySessionStore (session.json WAL with .bak shadow)
+/// - Real WindowsAutostartProvider (HKCU Run & StartupApproved registry keys)
+/// - Simulated IDeviceProtectionProvider and IPrivacySessionPlatformAdapter to enable deterministic
+///   continuous integration testing without requiring physical machine reboots, physical camera hardware,
+///   or physical microphone hardware.
 /// </summary>
 public sealed class WindowsRealLifecycleIntegrationTests : IDisposable
 {
@@ -75,7 +80,7 @@ public sealed class WindowsRealLifecycleIntegrationTests : IDisposable
     // =========================================================================
 
     [Fact]
-    public async Task ScenarioA_ProtectCamera_RebootWindows_Autostarts_CameraBecomesProtected()
+    public async Task ScenarioA_ProtectCamera_SimulatedReboot_Autostarts_CameraBecomesProtected()
     {
         var env = CreateEnvironment();
 
@@ -126,7 +131,7 @@ public sealed class WindowsRealLifecycleIntegrationTests : IDisposable
     // =========================================================================
 
     [Fact]
-    public async Task ScenarioB_ProtectMicrophone_Reboot_MicrophoneBecomesProtected()
+    public async Task ScenarioB_ProtectMicrophone_SimulatedReboot_MicrophoneBecomesProtected()
     {
         var env = CreateEnvironment();
 
@@ -154,7 +159,7 @@ public sealed class WindowsRealLifecycleIntegrationTests : IDisposable
     // =========================================================================
 
     [Fact]
-    public async Task ScenarioC_ProtectBoth_Reboot_BothBecomeProtected()
+    public async Task ScenarioC_ProtectBoth_SimulatedReboot_BothBecomeProtected()
     {
         var env = CreateEnvironment();
 
@@ -182,7 +187,7 @@ public sealed class WindowsRealLifecycleIntegrationTests : IDisposable
     // =========================================================================
 
     [Fact]
-    public async Task ScenarioD_ProtectCamera_ExplicitlyDisable_Reboot_CameraRemainsUnprotected()
+    public async Task ScenarioD_ProtectCamera_ExplicitlyDisable_SimulatedReboot_CameraRemainsUnprotected()
     {
         var env = CreateEnvironment();
 

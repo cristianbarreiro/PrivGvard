@@ -416,8 +416,11 @@ internal sealed class RecoveryHostDependencies :
     IDeviceProtectionProvider,
     IDeviceDetector,
     IPlatformCapabilityProvider,
-    IStateStore
+    IStateStore,
+    ILegacyArtifactDetector
 {
+    public bool HasLegacyEvidenceResult { get; set; }
+    public bool HasLegacyEvidence() => HasLegacyEvidenceResult;
     private DesiredState _desiredState = new();
     private int _saveAttempts;
     public int SaveCount { get; private set; }
@@ -455,12 +458,54 @@ internal sealed class RecoveryHostDependencies :
         IsElevated = false
     };
 
+    public OperationResult SecureEnableResult { get; set; } = OperationResult.Ok();
+    public Func<BlockTarget, OperationResult>? EnableSecureHandler { get; set; }
+
+    public void SetCameraStandardState(StandardProtectionState state)
+    {
+        CurrentProtectionState = CurrentProtectionState with
+        {
+            Camera = CurrentProtectionState.Camera with { StandardState = state }
+        };
+    }
+
+    public void SetMicrophoneStandardState(StandardProtectionState state)
+    {
+        CurrentProtectionState = CurrentProtectionState with
+        {
+            Microphone = CurrentProtectionState.Microphone with { StandardState = state }
+        };
+    }
+
+    public void SetCameraSecureState(SecureProtectionState state)
+    {
+        CurrentProtectionState = CurrentProtectionState with
+        {
+            Camera = CurrentProtectionState.Camera with { SecureState = state }
+        };
+    }
+
+    public void SetMicrophoneSecureState(SecureProtectionState state)
+    {
+        CurrentProtectionState = CurrentProtectionState with
+        {
+            Microphone = CurrentProtectionState.Microphone with { SecureState = state }
+        };
+    }
+
     public Task<OperationResult> EnableStandardProtectionAsync(
         BlockTarget target,
         CancellationToken cancellationToken = default)
     {
         StandardEnableCalls++;
         BeforeStandardEnableReturn?.Invoke();
+        if (StandardEnableResult.Success)
+        {
+            if (target is BlockTarget.Camera or BlockTarget.Both)
+                SetCameraStandardState(StandardProtectionState.Active);
+            if (target is BlockTarget.Microphone or BlockTarget.Both)
+                SetMicrophoneStandardState(StandardProtectionState.Active);
+        }
         return Task.FromResult(StandardEnableResult);
     }
 
@@ -469,16 +514,38 @@ internal sealed class RecoveryHostDependencies :
         CancellationToken cancellationToken = default)
     {
         StandardDisableCalls++;
+        if (target is BlockTarget.Camera or BlockTarget.Both)
+            SetCameraStandardState(StandardProtectionState.Inactive);
+        if (target is BlockTarget.Microphone or BlockTarget.Both)
+            SetMicrophoneStandardState(StandardProtectionState.Inactive);
         return Task.FromResult(OperationResult.Ok());
     }
 
     public Task<OperationResult> EnableSecureProtectionAsync(
         BlockTarget target,
-        CancellationToken cancellationToken = default) => Task.FromResult(OperationResult.Ok());
+        CancellationToken cancellationToken = default)
+    {
+        var result = EnableSecureHandler?.Invoke(target) ?? SecureEnableResult;
+        if (result.Success)
+        {
+            if (target is BlockTarget.Camera or BlockTarget.Both)
+                SetCameraSecureState(SecureProtectionState.Active);
+            if (target is BlockTarget.Microphone or BlockTarget.Both)
+                SetMicrophoneSecureState(SecureProtectionState.Active);
+        }
+        return Task.FromResult(result);
+    }
 
     public Task<OperationResult> DisableSecureProtectionAsync(
         BlockTarget target,
-        CancellationToken cancellationToken = default) => Task.FromResult(OperationResult.Ok());
+        CancellationToken cancellationToken = default)
+    {
+        if (target is BlockTarget.Camera or BlockTarget.Both)
+            SetCameraSecureState(SecureProtectionState.Available);
+        if (target is BlockTarget.Microphone or BlockTarget.Both)
+            SetMicrophoneSecureState(SecureProtectionState.Available);
+        return Task.FromResult(OperationResult.Ok());
+    }
 
     public Task<FullProtectionState> GetProtectionStateAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(CurrentProtectionState);
@@ -515,4 +582,16 @@ internal sealed class RecoveryHostDependencies :
     }
 
     public void SetDesiredState(DesiredState state) => _desiredState = state;
+}
+
+internal sealed class ScriptedLegacyArtifactDetector : ILegacyArtifactDetector
+{
+    public bool HasLegacyEvidenceResult { get; set; }
+
+    public ScriptedLegacyArtifactDetector(bool hasLegacyEvidence = false)
+    {
+        HasLegacyEvidenceResult = hasLegacyEvidence;
+    }
+
+    public bool HasLegacyEvidence() => HasLegacyEvidenceResult;
 }
