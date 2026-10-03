@@ -163,9 +163,36 @@ public sealed class WindowsPrivacySessionPlatformAdapter : IPrivacySessionPlatfo
         };
     }
 
+    private int _recoveryPassSuppressed;
+
     public void CompleteRecoveryPass()
     {
+        if (Volatile.Read(ref _recoveryPassSuppressed) > 0)
+        {
+            Log.Debug("CompleteRecoveryPass suppressed: startup reconciliation scope is active");
+            return;
+        }
+
         WindowsPrivilegedSession.Instance.CloseSession();
+    }
+
+    public void SuppressRecoveryPassCompletion()
+    {
+        var count = Interlocked.Increment(ref _recoveryPassSuppressed);
+        Log.Information("Startup privileged scope entered (suppression depth: {Depth})", count);
+    }
+
+    public void ResumeRecoveryPassCompletion()
+    {
+        var count = Interlocked.Decrement(ref _recoveryPassSuppressed);
+        Log.Information("Startup privileged scope exiting (suppression depth: {Depth})", count);
+        if (count <= 0)
+        {
+            // Ensure we never go negative
+            Interlocked.CompareExchange(ref _recoveryPassSuppressed, 0, count);
+            Log.Information("Closing startup privileged worker session");
+            WindowsPrivilegedSession.Instance.CloseSession();
+        }
     }
 
     private static void CaptureStandardRegistry(

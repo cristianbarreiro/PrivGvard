@@ -153,6 +153,8 @@ internal sealed class ScriptedPrivacySessionPlatformAdapter : IPrivacySessionPla
             _ownershipAttestations[resourceId] = new PrivacyOwnershipAttestation(kind, errorMessage);
     }
 
+    public Func<ProtectionLayer, BlockTarget, string, IReadOnlyList<PrivacyResourceState>>? CaptureFactory { get; set; }
+
     public Task<IReadOnlyList<PrivacyResourceState>> CaptureAsync(
         ProtectionLayer layer,
         BlockTarget target,
@@ -161,6 +163,11 @@ internal sealed class ScriptedPrivacySessionPlatformAdapter : IPrivacySessionPla
     {
         cancellationToken.ThrowIfCancellationRequested();
         OnCapture?.Invoke();
+        if (CaptureFactory != null)
+        {
+            return Task.FromResult<IReadOnlyList<PrivacyResourceState>>(
+                CaptureFactory(layer, target, operationId).Select(PrivacyRecoveryTestData.Clone).ToList());
+        }
         return Task.FromResult<IReadOnlyList<PrivacyResourceState>>(
             CapturedResources.Select(PrivacyRecoveryTestData.Clone).ToList());
     }
@@ -228,7 +235,14 @@ internal sealed class ScriptedPrivacySessionPlatformAdapter : IPrivacySessionPla
         return result;
     }
 
+    private int _suppressCalls;
+    private int _resumeCalls;
+    public int SuppressCalls => Volatile.Read(ref _suppressCalls);
+    public int ResumeCalls => Volatile.Read(ref _resumeCalls);
+
     public void CompleteRecoveryPass() => Interlocked.Increment(ref _completedRecoveryPasses);
+    public void SuppressRecoveryPassCompletion() => Interlocked.Increment(ref _suppressCalls);
+    public void ResumeRecoveryPassCompletion() => Interlocked.Increment(ref _resumeCalls);
 }
 
 internal static class PrivacyRecoveryTestData

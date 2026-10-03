@@ -75,4 +75,17 @@ public interface IPrivacySessionPlatformAdapter
     /// retain an elevated worker after this callback.
     /// </summary>
     void CompleteRecoveryPass();
+
+    /// <summary>
+    /// Suppresses <see cref="CompleteRecoveryPass"/> calls so an elevated worker survives across
+    /// multiple sequential operations (e.g. startup reconciliation). Each suppression must be
+    /// balanced by a <see cref="ResumeRecoveryPassCompletion"/> call.
+    /// </summary>
+    void SuppressRecoveryPassCompletion() { }
+
+    /// <summary>
+    /// Resumes normal <see cref="CompleteRecoveryPass"/> behavior and immediately releases any
+    /// privilege that was retained during the suppressed window.
+    /// </summary>
+    void ResumeRecoveryPassCompletion() { }
 }

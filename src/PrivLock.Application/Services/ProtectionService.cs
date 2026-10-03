@@ -69,7 +69,7 @@ public sealed class ProtectionService
     {
     }
 
-    private ProtectionService(
+    internal ProtectionService(
         IDeviceProtectionProvider protectionProvider,
         IDeviceDetector deviceDetector,
         IPlatformCapabilityProvider capabilityProvider,
@@ -479,68 +479,90 @@ public sealed class ProtectionService
             var failures = new List<string>();
             var details = new List<DeviceOperationDetail>();
 
-            if (cameraNeedsStandard)
+            _privacySessions.SuppressPlatformPassCompletion();
+            try
             {
-                Log.Information("Startup reconciliation: Applying Camera standard protection");
-                var camResult = await EnableStandardProtectionAsync(BlockTarget.Camera, cancellationToken);
-                if (!camResult.Success)
+                if (cameraNeedsStandard)
                 {
-                    failures.Add($"Camera standard protection failed: {camResult.ErrorMessage}");
+                    Log.Information("Startup reconciliation: Applying Camera standard protection");
+                    var camResult = await EnableStandardProtectionAsync(BlockTarget.Camera, cancellationToken);
+                    if (!camResult.Success)
+                    {
+                        failures.Add($"Camera standard protection failed: {camResult.ErrorMessage}");
+                    }
+                    else if (camResult.Details != null)
+                    {
+                        details.AddRange(camResult.Details);
+                    }
                 }
-                else if (camResult.Details != null)
+
+                var cameraStandardActive = cameraNeedsStandard
+                    ? !failures.Any(f => f.Contains("Camera standard protection"))
+                    : actual.Camera.StandardState == StandardProtectionState.Active;
+
+                var elevationDenied = false;
+
+                if (cameraNeedsSecure && cameraStandardActive)
                 {
-                    details.AddRange(camResult.Details);
+                    Log.Information("Startup reconciliation: Applying Camera secure protection");
+                    var camSecResult = await EnableSecureProtectionAsync(BlockTarget.Camera, cancellationToken);
+                    if (!camSecResult.Success)
+                    {
+                        failures.Add($"Camera secure protection failed: {camSecResult.ErrorMessage}");
+                        if (IsElevationDenied(camSecResult))
+                        {
+                            elevationDenied = true;
+                        }
+                    }
+                    else if (camSecResult.Details != null)
+                    {
+                        details.AddRange(camSecResult.Details);
+                    }
+                }
+
+                if (micNeedsStandard)
+                {
+                    Log.Information("Startup reconciliation: Applying Microphone standard protection");
+                    var micResult = await EnableStandardProtectionAsync(BlockTarget.Microphone, cancellationToken);
+                    if (!micResult.Success)
+                    {
+                        failures.Add($"Microphone standard protection failed: {micResult.ErrorMessage}");
+                    }
+                    else if (micResult.Details != null)
+                    {
+                        details.AddRange(micResult.Details);
+                    }
+                }
+
+                var micStandardActive = micNeedsStandard
+                    ? !failures.Any(f => f.Contains("Microphone standard protection"))
+                    : actual.Microphone.StandardState == StandardProtectionState.Active;
+
+                if (micNeedsSecure && micStandardActive)
+                {
+                    if (elevationDenied)
+                    {
+                        Log.Warning("Startup reconciliation: Skipping Microphone secure protection because elevation was previously denied");
+                        failures.Add("Microphone secure protection skipped: Administrator permissions were denied.");
+                    }
+                    else
+                    {
+                        Log.Information("Startup reconciliation: Applying Microphone secure protection");
+                        var micSecResult = await EnableSecureProtectionAsync(BlockTarget.Microphone, cancellationToken);
+                        if (!micSecResult.Success)
+                        {
+                            failures.Add($"Microphone secure protection failed: {micSecResult.ErrorMessage}");
+                        }
+                        else if (micSecResult.Details != null)
+                        {
+                            details.AddRange(micSecResult.Details);
+                        }
+                    }
                 }
             }
-
-            var cameraStandardActive = cameraNeedsStandard
-                ? !failures.Any(f => f.Contains("Camera standard protection"))
-                : actual.Camera.StandardState == StandardProtectionState.Active;
-
-            if (cameraNeedsSecure && cameraStandardActive)
+            finally
             {
-                Log.Information("Startup reconciliation: Applying Camera secure protection");
-                var camSecResult = await EnableSecureProtectionAsync(BlockTarget.Camera, cancellationToken);
-                if (!camSecResult.Success)
-                {
-                    failures.Add($"Camera secure protection failed: {camSecResult.ErrorMessage}");
-                }
-                else if (camSecResult.Details != null)
-                {
-                    details.AddRange(camSecResult.Details);
-                }
-            }
-
-            if (micNeedsStandard)
-            {
-                Log.Information("Startup reconciliation: Applying Microphone standard protection");
-                var micResult = await EnableStandardProtectionAsync(BlockTarget.Microphone, cancellationToken);
-                if (!micResult.Success)
-                {
-                    failures.Add($"Microphone standard protection failed: {micResult.ErrorMessage}");
-                }
-                else if (micResult.Details != null)
-                {
-                    details.AddRange(micResult.Details);
-                }
-            }
-
-            var micStandardActive = micNeedsStandard
-                ? !failures.Any(f => f.Contains("Microphone standard protection"))
-                : actual.Microphone.StandardState == StandardProtectionState.Active;
-
-            if (micNeedsSecure && micStandardActive)
-            {
-                Log.Information("Startup reconciliation: Applying Microphone secure protection");
-                var micSecResult = await EnableSecureProtectionAsync(BlockTarget.Microphone, cancellationToken);
-                if (!micSecResult.Success)
-                {
-                    failures.Add($"Microphone secure protection failed: {micSecResult.ErrorMessage}");
-                }
-                else if (micSecResult.Details != null)
-                {
-                    details.AddRange(micSecResult.Details);
-                }
+                _privacySessions.ResumePlatformPassCompletion();
             }
 
             await PublishVerifiedStateAsync(cancellationToken);
@@ -557,6 +579,16 @@ public sealed class ProtectionService
             Log.Error(ex, "Unexpected error during startup reconciliation");
             return OperationResult.Fail($"Startup reconciliation encountered an error: {ex.Message}");
         }
+    }
+
+    private static bool IsElevationDenied(OperationResult result)
+    {
+        if (result.Success || string.IsNullOrEmpty(result.ErrorMessage))
+            return false;
+
+        return result.ErrorMessage.Contains("Administrator permissions were denied", StringComparison.OrdinalIgnoreCase) ||
+               (result.ErrorMessage.Contains("elevation", StringComparison.OrdinalIgnoreCase) &&
+                result.ErrorMessage.Contains("denied", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

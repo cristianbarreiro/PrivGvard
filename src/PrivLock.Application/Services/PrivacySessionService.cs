@@ -1235,6 +1235,41 @@ public sealed class PrivacySessionService
         }
     }
 
+    /// <summary>
+    /// Suppresses elevated worker teardown after each operation so multiple sequential
+    /// privileged operations reuse a single elevated session (at most one UAC prompt).
+    /// Must be balanced by <see cref="ResumePlatformPassCompletion"/>.
+    /// </summary>
+    public void SuppressPlatformPassCompletion()
+    {
+        try
+        {
+            _platform.SuppressRecoveryPassCompletion();
+            Log.Information("Starting startup privileged scope");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to suppress platform pass completion");
+        }
+    }
+
+    /// <summary>
+    /// Resumes normal elevated worker teardown after each operation and immediately
+    /// releases any privilege that was retained during the suppressed window.
+    /// </summary>
+    public void ResumePlatformPassCompletion()
+    {
+        try
+        {
+            _platform.ResumeRecoveryPassCompletion();
+            Log.Information("Startup reconciliation completed — privileged scope closed");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to resume platform pass completion");
+        }
+    }
+
     private async Task<OperationResult> EnsureSecureClaimRetiredForTerminalObservationAsync(
         PrivacyResourceState resource,
         CancellationToken cancellationToken)
