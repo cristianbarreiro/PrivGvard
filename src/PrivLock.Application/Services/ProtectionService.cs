@@ -21,17 +21,17 @@ public sealed class ProtectionService
     private readonly IPlatformCapabilityProvider _capabilityProvider;
     private readonly IStateStore _stateStore;
     private readonly PrivacySessionService _privacySessions;
+    private readonly ILegacyArtifactDetector _legacyDetector;
     private readonly bool _allowUntrackedMutations;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private int _shutdownStarted;
-    private int _desiredStateCleanupPending;
 
     public event Action<FullProtectionState>? StateChanged;
 
     public PlatformCapabilities Capabilities => _capabilityProvider.Capabilities;
     public PlatformInfo PlatformInfo => _capabilityProvider.PlatformInfo;
     public bool IsShutdownStarted => Volatile.Read(ref _shutdownStarted) != 0;
-    internal bool HasPendingDesiredStateCleanup => Volatile.Read(ref _desiredStateCleanupPending) != 0;
+    internal bool HasPendingDesiredStateCleanup => false;
     public bool IsAdvancedProtectionEnabled => _stateStore.Load().AdvancedProtectionEnabled;
 
     public ProtectionService(
@@ -46,16 +46,36 @@ public sealed class ProtectionService
             capabilityProvider,
             stateStore,
             privacySessions,
+            legacyDetector: null,
             allowUntrackedMutations: false)
     {
     }
 
-    private ProtectionService(
+    public ProtectionService(
         IDeviceProtectionProvider protectionProvider,
         IDeviceDetector deviceDetector,
         IPlatformCapabilityProvider capabilityProvider,
         IStateStore stateStore,
         PrivacySessionService privacySessions,
+        ILegacyArtifactDetector? legacyDetector)
+        : this(
+            protectionProvider,
+            deviceDetector,
+            capabilityProvider,
+            stateStore,
+            privacySessions,
+            legacyDetector,
+            allowUntrackedMutations: false)
+    {
+    }
+
+    internal ProtectionService(
+        IDeviceProtectionProvider protectionProvider,
+        IDeviceDetector deviceDetector,
+        IPlatformCapabilityProvider capabilityProvider,
+        IStateStore stateStore,
+        PrivacySessionService privacySessions,
+        ILegacyArtifactDetector? legacyDetector,
         bool allowUntrackedMutations)
     {
         _protectionProvider = protectionProvider;
@@ -63,6 +83,7 @@ public sealed class ProtectionService
         _capabilityProvider = capabilityProvider;
         _stateStore = stateStore;
         _privacySessions = privacySessions;
+        _legacyDetector = legacyDetector ?? new PrivLock.Infrastructure.Common.Storage.DefaultLegacyArtifactDetector();
         _allowUntrackedMutations = allowUntrackedMutations;
     }
 
@@ -83,6 +104,7 @@ public sealed class ProtectionService
             new PrivacySessionService(
                 new VolatilePrivacySessionStore(),
                 new UnsupportedPrivacySessionPlatformAdapter()),
+            legacyDetector: null,
             allowUntrackedMutations: true)
     {
     }
@@ -387,26 +409,186 @@ public sealed class ProtectionService
         await _operationGate.WaitAsync(cancellationToken);
         try
         {
-            var desiredBeforeRecovery = _stateStore.Load();
             var result = await _privacySessions.RecoverUnfinishedSessionAsync(cancellationToken);
             if (!_allowUntrackedMutations &&
                 result.SafeToExit &&
                 !result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredBeforeRecovery))
+                _legacyDetector.HasLegacyEvidence())
             {
                 return LegacyUntrackedRecoveryResult();
             }
-            if (result.TrackingSupported &&
-                result.SafeToExit &&
-                result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredBeforeRecovery))
-                ResetDesiredProtectionStateBestEffort("startup recovery");
+            // DesiredState represents durable user intent across restarts and shutdowns;
+            // startup recovery restores any unfinished runtime mutations to a safe baseline
+            // without clearing what the user chose to protect.
             return result;
         }
         finally
         {
             _operationGate.Release();
         }
+    }
+
+    /// <summary>
+    /// Reconciles the persistent DesiredState with the actual operating-system protection state.
+    /// Reapplies only the protections that DesiredState requires, without treating previous
+    /// PrivacySessions as desired state, never touching inactive scopes, independently reconciling
+    /// Camera and Microphone, and establishing a new PrivacySession for newly applied runtime mutations.
+    /// Aborts safely without mutating platform state if startup recovery was unsafe or incomplete.
+    /// </summary>
+    public async Task<OperationResult> ReconcileDesiredProtectionAsync(
+        PrivacyRecoveryResult? recoveryResult = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (IsShutdownStarted)
+            return OperationResult.Fail("PrivGvard is shutting down; startup reconciliation was not performed.");
+
+        if (recoveryResult is { SafeToExit: false } or { ConflictCount: > 0 })
+        {
+            var reason = recoveryResult.ErrorMessage ??
+                "A previous privacy session recovery was incomplete or conflicted; startup reconciliation was aborted for safety.";
+            Log.Warning("Startup reconciliation aborted because recovery was incomplete: {Reason}", reason);
+            return OperationResult.Fail(reason);
+        }
+
+        try
+        {
+            var desired = _stateStore.Load();
+            var actual = await _protectionProvider.GetProtectionStateAsync(cancellationToken);
+
+            var cameraNeedsStandard = desired.CameraStandard == StandardProtectionState.Active &&
+                                      actual.Camera.StandardState != StandardProtectionState.Active;
+
+            var micNeedsStandard = desired.MicrophoneStandard == StandardProtectionState.Active &&
+                                   actual.Microphone.StandardState != StandardProtectionState.Active;
+
+            var cameraNeedsSecure = desired.CameraStandard == StandardProtectionState.Active &&
+                                    (desired.AdvancedProtectionEnabled || desired.CameraSecure == SecureProtectionState.Active) &&
+                                    actual.Camera.SecureState != SecureProtectionState.Active;
+
+            var micNeedsSecure = desired.MicrophoneStandard == StandardProtectionState.Active &&
+                                 (desired.AdvancedProtectionEnabled || desired.MicrophoneSecure == SecureProtectionState.Active) &&
+                                 actual.Microphone.SecureState != SecureProtectionState.Active;
+
+            if (!cameraNeedsStandard && !micNeedsStandard && !cameraNeedsSecure && !micNeedsSecure)
+            {
+                Log.Information("Startup reconciliation: OS protection already matches desired state; no mutations required");
+                await PublishVerifiedStateAsync(cancellationToken);
+                return OperationResult.Ok();
+            }
+
+            var failures = new List<string>();
+            var details = new List<DeviceOperationDetail>();
+
+            _privacySessions.SuppressPlatformPassCompletion();
+            try
+            {
+                if (cameraNeedsStandard)
+                {
+                    Log.Information("Startup reconciliation: Applying Camera standard protection");
+                    var camResult = await EnableStandardProtectionAsync(BlockTarget.Camera, cancellationToken);
+                    if (!camResult.Success)
+                    {
+                        failures.Add($"Camera standard protection failed: {camResult.ErrorMessage}");
+                    }
+                    else if (camResult.Details != null)
+                    {
+                        details.AddRange(camResult.Details);
+                    }
+                }
+
+                var cameraStandardActive = cameraNeedsStandard
+                    ? !failures.Any(f => f.Contains("Camera standard protection"))
+                    : actual.Camera.StandardState == StandardProtectionState.Active;
+
+                var elevationDenied = false;
+
+                if (cameraNeedsSecure && cameraStandardActive)
+                {
+                    Log.Information("Startup reconciliation: Applying Camera secure protection");
+                    var camSecResult = await EnableSecureProtectionAsync(BlockTarget.Camera, cancellationToken);
+                    if (!camSecResult.Success)
+                    {
+                        failures.Add($"Camera secure protection failed: {camSecResult.ErrorMessage}");
+                        if (IsElevationDenied(camSecResult))
+                        {
+                            elevationDenied = true;
+                        }
+                    }
+                    else if (camSecResult.Details != null)
+                    {
+                        details.AddRange(camSecResult.Details);
+                    }
+                }
+
+                if (micNeedsStandard)
+                {
+                    Log.Information("Startup reconciliation: Applying Microphone standard protection");
+                    var micResult = await EnableStandardProtectionAsync(BlockTarget.Microphone, cancellationToken);
+                    if (!micResult.Success)
+                    {
+                        failures.Add($"Microphone standard protection failed: {micResult.ErrorMessage}");
+                    }
+                    else if (micResult.Details != null)
+                    {
+                        details.AddRange(micResult.Details);
+                    }
+                }
+
+                var micStandardActive = micNeedsStandard
+                    ? !failures.Any(f => f.Contains("Microphone standard protection"))
+                    : actual.Microphone.StandardState == StandardProtectionState.Active;
+
+                if (micNeedsSecure && micStandardActive)
+                {
+                    if (elevationDenied)
+                    {
+                        Log.Warning("Startup reconciliation: Skipping Microphone secure protection because elevation was previously denied");
+                        failures.Add("Microphone secure protection skipped: Administrator permissions were denied.");
+                    }
+                    else
+                    {
+                        Log.Information("Startup reconciliation: Applying Microphone secure protection");
+                        var micSecResult = await EnableSecureProtectionAsync(BlockTarget.Microphone, cancellationToken);
+                        if (!micSecResult.Success)
+                        {
+                            failures.Add($"Microphone secure protection failed: {micSecResult.ErrorMessage}");
+                        }
+                        else if (micSecResult.Details != null)
+                        {
+                            details.AddRange(micSecResult.Details);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                _privacySessions.ResumePlatformPassCompletion();
+            }
+
+            await PublishVerifiedStateAsync(cancellationToken);
+
+            if (failures.Count > 0)
+            {
+                return OperationResult.Fail(string.Join("; ", failures), details);
+            }
+
+            return OperationResult.Ok(details);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Unexpected error during startup reconciliation");
+            return OperationResult.Fail($"Startup reconciliation encountered an error: {ex.Message}");
+        }
+    }
+
+    private static bool IsElevationDenied(OperationResult result)
+    {
+        if (result.Success || string.IsNullOrEmpty(result.ErrorMessage))
+            return false;
+
+        return result.ErrorMessage.Contains("Administrator permissions were denied", StringComparison.OrdinalIgnoreCase) ||
+               (result.ErrorMessage.Contains("elevation", StringComparison.OrdinalIgnoreCase) &&
+                result.ErrorMessage.Contains("denied", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -448,18 +630,15 @@ public sealed class ProtectionService
                 }
             }
 
-            var desiredAfterRecovery = _stateStore.Load();
             if (!_allowUntrackedMutations &&
                 result.SafeToExit &&
                 !result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredAfterRecovery))
+                _legacyDetector.HasLegacyEvidence())
                 result = LegacyUntrackedRecoveryResult();
 
-            if (result.SafeToExit &&
-                result.HadPersistedSession &&
-                HasAnyDesiredProtection(desiredAfterRecovery) &&
-                (result.TrackingSupported || _allowUntrackedMutations))
-                ResetDesiredProtectionStateBestEffort("shutdown recovery");
+            // Invariant: Restoring the runtime OS state during shutdown MUST NOT implicitly mean
+            // that the user disabled protection. DesiredState survives normal application shutdown
+            // and Windows shutdown. Only explicit user disable operations modify DesiredState.
             return result;
         }
         finally
@@ -658,7 +837,7 @@ public sealed class ProtectionService
                 return recovery;
             if (!recovery.HadRecoveryWork &&
                 !recovery.HadPersistedSession &&
-                IsDesiredScopeActive(_stateStore.Load(), layer, target))
+                _legacyDetector.HasLegacyEvidence())
                 return LegacyUntrackedRecoveryResult();
             if (!recovery.HadRecoveryWork)
             {
@@ -691,7 +870,7 @@ public sealed class ProtectionService
 
         if (!_allowUntrackedMutations)
         {
-            return IsDesiredScopeActive(_stateStore.Load(), layer, target)
+            return _legacyDetector.HasLegacyEvidence()
                 ? LegacyUntrackedRecoveryResult()
                 : PrivacyRecoveryResult.Unsupported();
         }
@@ -778,32 +957,6 @@ public sealed class ProtectionService
         _stateStore.Save(desired);
     }
 
-    private void ResetDesiredProtectionState()
-    {
-        var desired = _stateStore.Load();
-        desired.CameraStandard = StandardProtectionState.Inactive;
-        desired.CameraSecure = SecureProtectionState.Unavailable;
-        desired.MicrophoneStandard = StandardProtectionState.Inactive;
-        desired.MicrophoneSecure = SecureProtectionState.Unavailable;
-        _stateStore.Save(desired);
-    }
-
-    private void ResetDesiredProtectionStateBestEffort(string context)
-    {
-        try
-        {
-            ResetDesiredProtectionState();
-            Interlocked.Exchange(ref _desiredStateCleanupPending, 0);
-        }
-        catch (Exception ex)
-        {
-            // The recovery journal and verified native state remain authoritative. A preferences
-            // file failure must not turn a completed hardware restore into an unsafe shutdown.
-            Interlocked.Exchange(ref _desiredStateCleanupPending, 1);
-            Log.Error(ex, "Failed to reset desired protection state after {Context}", context);
-        }
-    }
-
     private OperationResult ToOperationResult(PrivacyRecoveryResult result)
     {
         if (!result.TrackingSupported && !_allowUntrackedMutations)
@@ -841,32 +994,6 @@ public sealed class ProtectionService
             "A protection state from an older PrivLock version was detected without an exact recovery snapshot. " +
             "It was preserved; automatic broad unblocking is unsafe. Review the affected operating-system privacy settings manually."
     };
-
-    private static bool HasAnyDesiredProtection(DesiredState desired) =>
-        desired.CameraStandard == StandardProtectionState.Active ||
-        desired.MicrophoneStandard == StandardProtectionState.Active ||
-        desired.CameraSecure == SecureProtectionState.Active ||
-        desired.MicrophoneSecure == SecureProtectionState.Active;
-
-    private static bool IsDesiredScopeActive(
-        DesiredState desired,
-        ProtectionLayer layer,
-        BlockTarget target)
-    {
-        var camera = layer == ProtectionLayer.Standard
-            ? desired.CameraStandard == StandardProtectionState.Active
-            : desired.CameraSecure == SecureProtectionState.Active;
-        var microphone = layer == ProtectionLayer.Standard
-            ? desired.MicrophoneStandard == StandardProtectionState.Active
-            : desired.MicrophoneSecure == SecureProtectionState.Active;
-        return target switch
-        {
-            BlockTarget.Camera => camera,
-            BlockTarget.Microphone => microphone,
-            BlockTarget.Both => camera || microphone,
-            _ => false
-        };
-    }
 
     private static bool? IsActualScopeActive(
         FullProtectionState state,

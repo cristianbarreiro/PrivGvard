@@ -554,7 +554,7 @@ begin
   if UninstallGateHandle = 0 then
     exit;
 
-  WaitResult := WaitForSingleObject(UninstallGateHandle, 0);
+  WaitResult := WaitForSingleObject(UninstallGateHandle, 10000);
   Result := (WaitResult = WAIT_OBJECT_0) or (WaitResult = WAIT_ABANDONED);
   if not Result then
   begin
@@ -691,6 +691,26 @@ begin
   end;
 
   Result := True;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  SingleInstanceMutex: THandle;
+  WaitResult: LongWord;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    // Ensure the safe-uninstall wrapper process has fully exited and released
+    // PrivGvard.exe before Inno begins file deletions.
+    SingleInstanceMutex := CreateMutexW(0, False, 'Global\PrivLock_SingleInstance');
+    if SingleInstanceMutex <> 0 then
+    begin
+      WaitResult := WaitForSingleObject(SingleInstanceMutex, 10000);
+      if (WaitResult = WAIT_OBJECT_0) or (WaitResult = WAIT_ABANDONED) then
+        ReleaseMutex(SingleInstanceMutex);
+      CloseHandle(SingleInstanceMutex);
+    end;
+  end;
 end;
 
 procedure DeinitializeUninstall;

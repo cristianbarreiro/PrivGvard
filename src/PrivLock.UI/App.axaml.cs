@@ -28,6 +28,7 @@ public partial class App : Avalonia.Application
     private NativeMenuItem? _trayExitItem;
     private bool _shutdownCommitted;
     private bool _shutdownInProgress;
+    private readonly bool _startMinimized;
 
     // Default constructor for designer
     public App()
@@ -38,12 +39,14 @@ public partial class App : Avalonia.Application
         MainViewModel mainViewModel,
         ShutdownCoordinator shutdownCoordinator,
         SettingsViewModel? settingsViewModel = null,
-        LocalizationService? localizationService = null)
+        LocalizationService? localizationService = null,
+        bool startMinimized = false)
     {
         _mainViewModel = mainViewModel;
         _shutdownCoordinator = shutdownCoordinator;
         _settingsViewModel = settingsViewModel;
         _localizationService = localizationService;
+        _startMinimized = startMinimized;
 
         if (_localizationService != null)
         {
@@ -80,6 +83,17 @@ public partial class App : Avalonia.Application
             };
             _mainWindow = mainWindow;
             desktop.MainWindow = _mainWindow;
+
+            // When launched via Windows autostart (--minimized), hide the main window
+            // so only the System Tray icon is visible. The user can restore the window
+            // from the tray at any time.
+            if (_startMinimized)
+            {
+                Log.Information("Starting minimized to system tray (--minimized flag detected)");
+                _mainWindow.ShowInTaskbar = false;
+                _mainWindow.WindowState = WindowState.Minimized;
+                mainWindow.Opened += OnStartMinimizedOpened;
+            }
 
             desktop.ShutdownRequested += (_, e) =>
             {
@@ -224,11 +238,28 @@ public partial class App : Avalonia.Application
         });
     }
 
+    /// <summary>
+    /// Handles the one-time Opened event when starting minimized. Avalonia requires the window
+    /// to be shown briefly before it can be hidden, so we hide it on the first Opened event
+    /// and unsubscribe immediately.
+    /// </summary>
+    private void OnStartMinimizedOpened(object? sender, EventArgs e)
+    {
+        if (sender is Window window)
+        {
+            window.Opened -= OnStartMinimizedOpened;
+            window.Hide();
+            Log.Debug("Main window hidden to system tray after initial Opened event");
+        }
+    }
+
     public void ShowMainWindow()
     {
         Dispatcher.UIThread.Post(() =>
         {
             if (_mainWindow == null) return;
+
+            _mainWindow.ShowInTaskbar = true;
 
             if (!_mainWindow.IsVisible)
             {

@@ -120,7 +120,7 @@ public sealed class ShutdownCoordinatorTests
     }
 
     [Fact]
-    public async Task CompletedRestore_DesiredStateSaveFailure_IsRetriedByNextExitSignal()
+    public async Task ShutdownRestore_PreservesDesiredProtectionState_DoesNotEraseOnExit()
     {
         var restoredDevice = PrivacyRecoveryTestData.Device(
             "restored-camera",
@@ -133,16 +133,13 @@ public sealed class ShutdownCoordinatorTests
         terminalSession.CompletedAtUtc = terminalSession.UpdatedAtUtc;
         var store = new RecordingPrivacySessionStore(terminalSession);
         var platform = new ScriptedPrivacySessionPlatformAdapter();
-        var dependencies = new RecoveryHostDependencies
-        {
-            SaveFailureFactory = attempt => attempt == 1
-                ? new IOException("preferences temporarily unavailable")
-                : null
-        };
+        var dependencies = new RecoveryHostDependencies();
         dependencies.SetDesiredState(new DesiredState
         {
             CameraStandard = StandardProtectionState.Active,
-            CameraSecure = SecureProtectionState.Available
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
         });
         var sessions = new PrivacySessionService(store, platform);
         var protection = new ProtectionService(
@@ -158,18 +155,21 @@ public sealed class ShutdownCoordinatorTests
 
         Assert.True(first.SafeToExit);
         Assert.True(first.HadPersistedSession);
-        Assert.Equal(1, dependencies.SaveAttempts);
-        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
+        // Shutdown restoration restores runtime state, but does not overwrite or erase DesiredState:
+        Assert.Equal(0, dependencies.SaveCount);
+        var state = dependencies.Load();
+        Assert.Equal(StandardProtectionState.Active, state.CameraStandard);
+        Assert.Equal(SecureProtectionState.Available, state.CameraSecure);
+        Assert.Equal(StandardProtectionState.Active, state.MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Available, state.MicrophoneSecure);
 
         var retryTask = coordinator.RestoreAsync("ApplicationLifetimeExited");
-        Assert.NotSame(firstTask, retryTask);
+        Assert.Same(firstTask, retryTask);
         var retry = await retryTask;
 
         Assert.True(retry.SafeToExit);
-        Assert.True(retry.HadPersistedSession);
-        Assert.Equal(2, dependencies.SaveAttempts);
-        Assert.Equal(1, dependencies.SaveCount);
-        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
+        Assert.Equal(0, dependencies.SaveCount);
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
     }
 
     [Fact]
@@ -186,12 +186,7 @@ public sealed class ShutdownCoordinatorTests
         terminalSession.CompletedAtUtc = terminalSession.UpdatedAtUtc;
         var store = new RecordingPrivacySessionStore(terminalSession);
         var platform = new ScriptedPrivacySessionPlatformAdapter();
-        var dependencies = new RecoveryHostDependencies
-        {
-            SaveFailureFactory = attempt => attempt == 1
-                ? new IOException("first desired-state reset failed")
-                : null
-        };
+        var dependencies = new RecoveryHostDependencies();
         dependencies.SetDesiredState(new DesiredState
         {
             CameraStandard = StandardProtectionState.Active,
@@ -206,12 +201,18 @@ public sealed class ShutdownCoordinatorTests
             sessions);
 
         var startup = await protection.RecoverPreviousSessionAsync();
+        // Startup recovery does not erase DesiredState:
+        Assert.True(startup.SafeToExit);
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
+        Assert.Equal(0, dependencies.SaveCount);
+
+        // Explicit user disable DOES erase the corresponding DesiredState:
         var disable = await protection.DisableStandardProtectionAsync(BlockTarget.Camera);
 
-        Assert.True(startup.SafeToExit);
         Assert.True(disable.Success);
         Assert.DoesNotContain("older PrivLock version", disable.ErrorMessage ?? string.Empty);
-        Assert.Equal(2, dependencies.SaveAttempts);
+        Assert.Equal(1, dependencies.SaveAttempts);
+        Assert.Equal(1, dependencies.SaveCount);
         Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
     }
 
@@ -241,11 +242,14 @@ public sealed class ShutdownCoordinatorTests
     }
 
     [Fact]
-    public async Task LegacyDesiredBlockWithoutJournal_IsPreservedAndReportedUnsafe()
+    public async Task LegacyEvidenceWithoutJournal_IsPreservedAndReportedUnsafe()
     {
         var store = new RecordingPrivacySessionStore();
         var platform = new ScriptedPrivacySessionPlatformAdapter();
-        var dependencies = new RecoveryHostDependencies();
+        var dependencies = new RecoveryHostDependencies
+        {
+            HasLegacyEvidenceResult = true
+        };
         dependencies.SetDesiredState(new DesiredState
         {
             CameraStandard = StandardProtectionState.Active,
@@ -257,7 +261,8 @@ public sealed class ShutdownCoordinatorTests
             dependencies,
             dependencies,
             dependencies,
-            sessions);
+            sessions,
+            dependencies);
 
         var startup = await protection.RecoverPreviousSessionAsync();
         var shutdown = await protection.BeginShutdownAndRestoreAsync("LegacyExit");
@@ -475,11 +480,236 @@ public sealed class ShutdownCoordinatorTests
         Assert.Equal(PrivacyResourceJournalState.Unchanged, Assert.Single(store.Current.Resources).JournalState);
     }
 
+    [Fact]
+    public async Task Shutdown_NormalShutdown_NoProtection_SafeExitAndDesiredStateRemainsInactive()
+    {
+        var store = new RecordingPrivacySessionStore();
+        var platform = new ScriptedPrivacySessionPlatformAdapter();
+        var dependencies = new RecoveryHostDependencies();
+        dependencies.SetDesiredState(new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Inactive,
+            MicrophoneStandard = StandardProtectionState.Inactive
+        });
+        var (_, coordinator) = CreateCoordinator(store, platform, dependencies);
+
+        var result = await coordinator.RestoreAsync("NormalExit");
+
+        Assert.True(result.SafeToExit);
+        Assert.False(result.HadPersistedSession);
+        Assert.False(result.HadRecoveryWork);
+        Assert.Empty(platform.RestoreCalls);
+        Assert.Equal(0, dependencies.SaveCount);
+        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
+        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().MicrophoneStandard);
+    }
+
+    [Fact]
+    public async Task Shutdown_WithCameraProtection_RestoresRuntimeCamera_PreservesDesiredState()
+    {
+        var camera = PrivacyRecoveryTestData.Device("camera-1", target: BlockTarget.Camera);
+        var session = PrivacyRecoveryTestData.ActiveSession(camera);
+        var store = new RecordingPrivacySessionStore(session);
+        var platform = new ScriptedPrivacySessionPlatformAdapter();
+        platform.SetObservation(camera.ResourceId, PrivacyResourceObservationKind.MatchesProtected);
+        var dependencies = new RecoveryHostDependencies();
+        dependencies.SetDesiredState(new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Inactive,
+            MicrophoneSecure = SecureProtectionState.Unavailable
+        });
+        var (_, coordinator) = CreateCoordinator(store, platform, dependencies);
+
+        var result = await coordinator.RestoreAsync("UserExit");
+
+        // 1. Runtime camera state was restored
+        Assert.True(result.SafeToExit);
+        Assert.Equal(1, result.RestoredCount);
+        Assert.Equal([camera.ResourceId], platform.RestoreCalls);
+
+        // 2. Privacy session was safely completed
+        Assert.False(store.Current!.IsActive);
+        Assert.True(store.Current.WasRestored);
+        Assert.Equal(PrivacySessionStatus.Restored, store.Current.Status);
+
+        // 3. DesiredState.Camera = Active preserved
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
+        Assert.Equal(SecureProtectionState.Available, dependencies.Load().CameraSecure);
+
+        // 4. DesiredState.Microphone = Inactive preserved
+        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Unavailable, dependencies.Load().MicrophoneSecure);
+
+        // Invariant: shutdown restoration did not save/erase DesiredState
+        Assert.Equal(0, dependencies.SaveCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_WithMicrophoneProtection_RestoresRuntimeMic_PreservesDesiredState()
+    {
+        var mic = PrivacyRecoveryTestData.AudioEndpoint("mic-endpoint-1");
+        var session = PrivacyRecoveryTestData.ActiveSession(mic);
+        var store = new RecordingPrivacySessionStore(session);
+        var platform = new ScriptedPrivacySessionPlatformAdapter();
+        platform.SetObservation(mic.ResourceId, PrivacyResourceObservationKind.MatchesProtected);
+        var dependencies = new RecoveryHostDependencies();
+        dependencies.SetDesiredState(new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Inactive,
+            CameraSecure = SecureProtectionState.Unavailable,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Available
+        });
+        var (_, coordinator) = CreateCoordinator(store, platform, dependencies);
+
+        var result = await coordinator.RestoreAsync("UserExit");
+
+        // 1. Runtime microphone state was restored
+        Assert.True(result.SafeToExit);
+        Assert.Equal(1, result.RestoredCount);
+        Assert.Equal([mic.ResourceId], platform.RestoreCalls);
+
+        // 2. Privacy session was safely completed
+        Assert.False(store.Current!.IsActive);
+        Assert.True(store.Current.WasRestored);
+        Assert.Equal(PrivacySessionStatus.Restored, store.Current.Status);
+
+        // 3. DesiredState.Camera = Inactive preserved
+        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
+        Assert.Equal(SecureProtectionState.Unavailable, dependencies.Load().CameraSecure);
+
+        // 4. DesiredState.Microphone = Active preserved
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Available, dependencies.Load().MicrophoneSecure);
+
+        Assert.Equal(0, dependencies.SaveCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_WithBoth_RestoresRuntimeBoth_PreservesDesiredState()
+    {
+        var camera = PrivacyRecoveryTestData.Device("camera-1", target: BlockTarget.Camera);
+        var mic = PrivacyRecoveryTestData.AudioEndpoint("mic-endpoint-1");
+        var session = PrivacyRecoveryTestData.ActiveSession(camera, mic);
+        var store = new RecordingPrivacySessionStore(session);
+        var platform = new ScriptedPrivacySessionPlatformAdapter();
+        platform.SetObservation(camera.ResourceId, PrivacyResourceObservationKind.MatchesProtected);
+        platform.SetObservation(mic.ResourceId, PrivacyResourceObservationKind.MatchesProtected);
+        var dependencies = new RecoveryHostDependencies();
+        dependencies.SetDesiredState(new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Active,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Active
+        });
+        var (_, coordinator) = CreateCoordinator(store, platform, dependencies);
+
+        var result = await coordinator.RestoreAsync("UserExit");
+
+        // 1. Runtime states for both devices were restored
+        Assert.True(result.SafeToExit);
+        Assert.Equal(2, result.RestoredCount);
+        Assert.Contains(camera.ResourceId, platform.RestoreCalls);
+        Assert.Contains(mic.ResourceId, platform.RestoreCalls);
+
+        // 2. Privacy session safely completed
+        Assert.False(store.Current!.IsActive);
+        Assert.True(store.Current.WasRestored);
+        Assert.Equal(PrivacySessionStatus.Restored, store.Current.Status);
+
+        // 3 & 4. DesiredState for both targets remains Active
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
+        Assert.Equal(SecureProtectionState.Active, dependencies.Load().CameraSecure);
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Active, dependencies.Load().MicrophoneSecure);
+
+        Assert.Equal(0, dependencies.SaveCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_AfterExplicitUserDisable_ClearsDesiredStateBeforeShutdown()
+    {
+        var camera = PrivacyRecoveryTestData.Device("camera-1", target: BlockTarget.Camera);
+        var session = PrivacyRecoveryTestData.ActiveSession(camera);
+        var store = new RecordingPrivacySessionStore(session);
+        var platform = new ScriptedPrivacySessionPlatformAdapter();
+        platform.SetObservation(camera.ResourceId, PrivacyResourceObservationKind.MatchesProtected);
+        var dependencies = new RecoveryHostDependencies();
+        dependencies.SetDesiredState(new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Available,
+            MicrophoneStandard = StandardProtectionState.Inactive,
+            MicrophoneSecure = SecureProtectionState.Unavailable
+        });
+        var (protection, coordinator) = CreateCoordinator(store, platform, dependencies);
+
+        // Explicit user disable of Camera
+        var disableResult = await protection.DisableStandardProtectionAsync(BlockTarget.Camera);
+        Assert.True(disableResult.Success);
+        Assert.Equal(1, dependencies.SaveCount);
+        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
+        Assert.Equal(SecureProtectionState.Unavailable, dependencies.Load().CameraSecure);
+        Assert.Equal([camera.ResourceId], platform.RestoreCalls);
+
+        // Subsequent application shutdown
+        var shutdownResult = await coordinator.RestoreAsync("UserExit");
+        Assert.True(shutdownResult.SafeToExit);
+        Assert.False(store.Current!.IsActive);
+        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().CameraStandard);
+        Assert.Equal(StandardProtectionState.Inactive, dependencies.Load().MicrophoneStandard);
+        Assert.Equal(1, dependencies.SaveCount);
+    }
+
+    [Fact]
+    public async Task Shutdown_PartiallyFailedRecovery_PreservesDesiredStateAndReportsIncompleteSession()
+    {
+        var camera = PrivacyRecoveryTestData.Device("camera-ok", target: BlockTarget.Camera);
+        var mic = PrivacyRecoveryTestData.AudioEndpoint("mic-missing");
+        var session = PrivacyRecoveryTestData.ActiveSession(camera, mic);
+        var store = new RecordingPrivacySessionStore(session);
+        var platform = new ScriptedPrivacySessionPlatformAdapter();
+        platform.SetObservation(camera.ResourceId, PrivacyResourceObservationKind.MatchesProtected);
+        platform.SetObservation(mic.ResourceId, PrivacyResourceObservationKind.Missing);
+        var dependencies = new RecoveryHostDependencies();
+        dependencies.SetDesiredState(new DesiredState
+        {
+            CameraStandard = StandardProtectionState.Active,
+            CameraSecure = SecureProtectionState.Active,
+            MicrophoneStandard = StandardProtectionState.Active,
+            MicrophoneSecure = SecureProtectionState.Active
+        });
+        var (_, coordinator) = CreateCoordinator(store, platform, dependencies);
+
+        var shutdownResult = await coordinator.RestoreAsync("UserExit");
+
+        // 1. Partial failure: camera was restored, mic was missing
+        Assert.False(shutdownResult.SafeToExit);
+        Assert.Equal(1, shutdownResult.RestoredCount);
+        Assert.Equal(1, shutdownResult.MissingCount);
+        Assert.Equal([camera.ResourceId], platform.RestoreCalls);
+
+        // 2. Session journal remains incomplete
+        Assert.True(store.Current!.IsActive);
+        Assert.Equal(PrivacySessionStatus.RecoveryIncomplete, store.Current.Status);
+
+        // 3. DesiredState is NOT corrupted or erased despite the partial failure
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().CameraStandard);
+        Assert.Equal(SecureProtectionState.Active, dependencies.Load().CameraSecure);
+        Assert.Equal(StandardProtectionState.Active, dependencies.Load().MicrophoneStandard);
+        Assert.Equal(SecureProtectionState.Active, dependencies.Load().MicrophoneSecure);
+        Assert.Equal(0, dependencies.SaveCount);
+    }
+
     private static (ProtectionService Protection, ShutdownCoordinator Coordinator) CreateCoordinator(
         IPrivacySessionStore store,
-        IPrivacySessionPlatformAdapter platform)
+        IPrivacySessionPlatformAdapter platform,
+        RecoveryHostDependencies? dependencies = null)
     {
-        var dependencies = new RecoveryHostDependencies();
+        dependencies ??= new RecoveryHostDependencies();
         var privacySessions = new PrivacySessionService(store, platform);
         var protection = new ProtectionService(
             dependencies,
