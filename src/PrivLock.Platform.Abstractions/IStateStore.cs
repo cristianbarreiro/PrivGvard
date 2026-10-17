@@ -14,6 +14,10 @@ public sealed record DesiredState
     public SecureProtectionState MicrophoneSecure { get; set; } = SecureProtectionState.Unavailable;
 
     public string Language { get; set; } = "es";
+    /// <summary>
+    /// Compatibility record of the last state confirmed after an in-app autostart operation.
+    /// It is never used to recreate or enable an operating-system registration at startup.
+    /// </summary>
     public bool Autostart { get; set; }
     public bool AdvancedProtectionEnabled { get; set; }
 }

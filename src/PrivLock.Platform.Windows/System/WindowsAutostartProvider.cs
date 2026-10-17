@@ -138,15 +138,8 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                     "The Windows startup command does not match PrivGvard's supported launch arguments.");
             }
 
-            var approved = _registry.ReadStartupApprovedValue(AppName);
-            if (approved is { Length: 0 })
-            {
-                return new AutostartStatus(
-                    AutostartState.InvalidRegistration,
-                    "Windows returned an empty Startup Apps approval value.");
-            }
-
-            if (approved is { Length: > 0 } && (approved[0] & 0x01) != 0)
+            var approval = _registry.ReadStartupApproval(AppName);
+            if (approval?.State == WindowsStartupApprovalState.DisabledByUser)
             {
                 return new AutostartStatus(
                     AutostartState.DisabledByUser,
@@ -263,13 +256,17 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
         object? legacyRun;
         byte[]? currentApproval;
         byte[]? legacyApproval;
+        WindowsStartupApprovalSnapshot? currentApprovalSnapshot;
+        WindowsStartupApprovalSnapshot? legacyApprovalSnapshot;
         WindowsStartupTaskState taskState;
         try
         {
             currentRun = _registry.ReadRunValue(AppName);
             legacyRun = _registry.ReadRunValue(LegacyAppName);
-            currentApproval = _registry.ReadStartupApprovedValue(AppName);
-            legacyApproval = _registry.ReadStartupApprovedValue(LegacyAppName);
+            currentApprovalSnapshot = _registry.ReadStartupApproval(AppName);
+            legacyApprovalSnapshot = _registry.ReadStartupApproval(LegacyAppName);
+            currentApproval = currentApprovalSnapshot?.Value;
+            legacyApproval = legacyApprovalSnapshot?.Value;
             taskState = await _startupTask.GetStateAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -298,17 +295,13 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 "The PrivLock Run value is not a recognized app-owned command and was left unchanged.");
         }
 
-        if (!TryGetApprovalDisabledState(currentApproval, out var currentDisabled) ||
-            !TryGetApprovalDisabledState(legacyApproval, out var legacyDisabled))
-        {
-            return OperationResult.Fail(
-                "Windows returned an invalid Startup Apps approval value; Win32 registrations were left unchanged.");
-        }
+        var currentDisabled = currentApprovalSnapshot?.State == WindowsStartupApprovalState.DisabledByUser;
+        var legacyDisabled = legacyApprovalSnapshot?.State == WindowsStartupApprovalState.DisabledByUser;
 
         if (preserveLegacyDisabledState &&
-            currentApproval != null &&
-            legacyApproval != null &&
-            currentDisabled != legacyDisabled)
+            currentApprovalSnapshot != null &&
+            legacyApprovalSnapshot != null &&
+            currentApprovalSnapshot.State != legacyApprovalSnapshot.State)
         {
             return OperationResult.Fail(
                 "The Win32 startup registrations have conflicting Windows user states and were left unchanged.");
@@ -404,12 +397,16 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
         object? currentValue;
         byte[]? legacyApproval;
         byte[]? currentApproval;
+        WindowsStartupApprovalSnapshot? legacyApprovalSnapshot;
+        WindowsStartupApprovalSnapshot? currentApprovalSnapshot;
         try
         {
             legacyValue = _registry.ReadRunValue(LegacyAppName);
             currentValue = _registry.ReadRunValue(AppName);
-            legacyApproval = _registry.ReadStartupApprovedValue(LegacyAppName);
-            currentApproval = _registry.ReadStartupApprovedValue(AppName);
+            legacyApprovalSnapshot = _registry.ReadStartupApproval(LegacyAppName);
+            currentApprovalSnapshot = _registry.ReadStartupApproval(AppName);
+            legacyApproval = legacyApprovalSnapshot?.Value;
+            currentApproval = currentApprovalSnapshot?.Value;
         }
         catch (Exception ex)
         {
@@ -432,8 +429,8 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 "The legacy Run value does not identify a PrivLock or PrivGvard executable and was left unchanged.");
         }
 
-        if (legacyApproval is { Length: > 0 } && (legacyApproval[0] & 0x01) != 0 &&
-            currentApproval is { Length: > 0 } && (currentApproval[0] & 0x01) == 0)
+        if (legacyApprovalSnapshot?.State == WindowsStartupApprovalState.DisabledByUser &&
+            currentApprovalSnapshot?.State == WindowsStartupApprovalState.Enabled)
         {
             return OperationResult.Fail(
                 "The legacy and current startup registrations have conflicting Windows user states and were left unchanged.");
@@ -452,16 +449,9 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 "The current PrivGvard Run value is not a verified replacement; both startup registrations were left unchanged.");
         }
 
-        if (!TryGetApprovalDisabledState(legacyApproval, out var legacyDisabled) ||
-            !TryGetApprovalDisabledState(currentApproval, out var currentDisabled))
-        {
-            return OperationResult.Fail(
-                "Windows returned an invalid Startup Apps approval value; both startup registrations were left unchanged.");
-        }
-
-        if (legacyApproval != null &&
-            currentApproval != null &&
-            legacyDisabled != currentDisabled)
+        if (legacyApprovalSnapshot != null &&
+            currentApprovalSnapshot != null &&
+            legacyApprovalSnapshot.State != currentApprovalSnapshot.State)
         {
             return OperationResult.Fail(
                 "The legacy and current startup registrations have conflicting Windows user states; both were left unchanged.");
@@ -494,9 +484,8 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
 
             var approvalBeforeDelete = _registry.ReadStartupApprovedValue(AppName);
             var legacyApprovalBeforeDelete = _registry.ReadStartupApprovedValue(LegacyAppName);
-            if (!ApprovalStateMatches(approvalBeforeDelete, currentApproval ?? legacyApproval) ||
-                !ApprovalStateMatches(legacyApprovalBeforeDelete, legacyApproval) ||
-                !ApprovalStatesCompatible(approvalBeforeDelete, legacyApprovalBeforeDelete))
+            if (!ApprovalValuesEqual(approvalBeforeDelete, currentApproval ?? legacyApproval) ||
+                !ApprovalValuesEqual(legacyApprovalBeforeDelete, legacyApproval))
             {
                 throw new InvalidOperationException(
                     "Windows startup approval state changed or conflicted during migration; the legacy entry was not removed.");
@@ -857,35 +846,6 @@ public sealed class WindowsAutostartProvider : IAutostartProvider
                 trimmed.Equals($"{executablePath} --minimized", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static bool TryGetApprovalDisabledState(byte[]? approval, out bool disabled)
-    {
-        disabled = false;
-        if (approval == null)
-            return true;
-        if (approval.Length == 0)
-            return false;
-
-        disabled = (approval[0] & 0x01) != 0;
-        return true;
-    }
-
-    private static bool ApprovalStateMatches(byte[]? left, byte[]? right)
-    {
-        if (left == null || right == null)
-            return left == null && right == null;
-
-        return left.Length > 0 &&
-               right.Length > 0 &&
-               (left[0] & 0x01) == (right[0] & 0x01);
-    }
-
-    private static bool ApprovalStatesCompatible(byte[]? left, byte[]? right)
-    {
-        return left == null ||
-               right == null ||
-               ApprovalStateMatches(left, right);
-    }
-
     private static bool ApprovalValuesEqual(byte[]? left, byte[]? right) =>
         left == null
             ? right == null
@@ -978,9 +938,20 @@ internal interface IWindowsAutostartRegistry
     void WriteRunValue(string name, string value);
     void DeleteRunValue(string name);
     byte[]? ReadStartupApprovedValue(string name);
+    WindowsStartupApprovalSnapshot? ReadStartupApproval(string name);
     void WriteStartupApprovedValue(string name, byte[] value);
     void DeleteStartupApprovedValue(string name);
 }
+
+internal enum WindowsStartupApprovalState
+{
+    Enabled,
+    DisabledByUser
+}
+
+internal sealed record WindowsStartupApprovalSnapshot(
+    byte[] Value,
+    WindowsStartupApprovalState State);
 
 internal sealed class WindowsAutostartRegistry(string runKeyPath, string startupApprovedKeyPath)
     : IWindowsAutostartRegistry
@@ -1012,6 +983,22 @@ internal sealed class WindowsAutostartRegistry(string runKeyPath, string startup
             return null;
         return value as byte[] ??
             throw new InvalidDataException($"StartupApproved value '{name}' is not REG_BINARY.");
+    }
+
+    public WindowsStartupApprovalSnapshot? ReadStartupApproval(string name)
+    {
+        var value = ReadStartupApprovedValue(name);
+        if (value == null)
+            return null;
+        if (value.Length == 0)
+            throw new InvalidDataException($"StartupApproved value '{name}' is empty.");
+
+        // StartupApproved is not a documented Win32 contract. Read its existing status
+        // conservatively for compatibility, but never write or synthesize this value.
+        var state = (value[0] & 0x01) != 0
+            ? WindowsStartupApprovalState.DisabledByUser
+            : WindowsStartupApprovalState.Enabled;
+        return new WindowsStartupApprovalSnapshot(value, state);
     }
 
     public void WriteStartupApprovedValue(string name, byte[] value)

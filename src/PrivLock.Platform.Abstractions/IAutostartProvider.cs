@@ -29,3 +29,24 @@ public interface IAutostartProvider
     Task<OperationResult> MigrateLegacyEntriesAsync() =>
         Task.FromResult(OperationResult.Ok());
 }
+
+/// <summary>
+/// Observes external changes to the effective autostart mechanism.
+/// </summary>
+public interface IAutostartChangeObserver
+{
+    /// <summary>
+    /// Indicates whether the active settings UI should refresh periodically because the
+    /// platform does not expose a native change notification.
+    /// </summary>
+    bool RequiresVisiblePolling { get; }
+
+    /// <summary>
+    /// Waits for external changes. Implementations must return on cancellation and report
+    /// terminal observation failures through <paramref name="onError"/>.
+    /// </summary>
+    Task ObserveChangesAsync(
+        Action onChanged,
+        Action<Exception> onError,
+        CancellationToken cancellationToken);
+}

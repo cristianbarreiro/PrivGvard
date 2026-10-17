@@ -13,9 +13,10 @@ public sealed partial class SettingsViewModel : ObservableObject
 {
     private static readonly ILogger Log = Serilog.Log.ForContext<SettingsViewModel>();
 
-    private readonly SettingsService _settingsService;
+    private readonly AutostartStateService _autostartStateService;
     private readonly LocalizationService _localizationService;
     private readonly ProtectionService _protectionService;
+    private bool _disposed;
 
     [ObservableProperty]
     private SettingsSection _selectedSection = SettingsSection.General;
@@ -27,12 +28,20 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // --- General Section Properties ---
     [ObservableProperty]
-    private bool _isAutostartEnabled;
+    private bool? _isAutostartEnabled;
+
+    [ObservableProperty]
+    private bool _isAutostartStatusKnown;
+
+    [ObservableProperty]
+    private bool _isAutostartBusy;
 
     [ObservableProperty]
     private string _autostartStatusMessage = "";
 
     public bool HasAutostartStatusMessage => !string.IsNullOrWhiteSpace(AutostartStatusMessage);
+    public bool IsAutostartToggleEnabled => IsAutostartStatusKnown && !IsAutostartBusy;
+    public bool RequiresVisibleAutostartPolling => _autostartStateService.RequiresVisiblePolling;
 
     [ObservableProperty]
     private bool _isSpanishSelected;
@@ -138,20 +147,21 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string AboutCopyright => _localizationService.GetString("AboutCopyright", "© 2026 cdev Studio. Todos los derechos reservados.");
 
     public SettingsViewModel(
-        SettingsService settingsService,
+        AutostartStateService autostartStateService,
         LocalizationService localizationService,
         ProtectionService protectionService)
     {
-        _settingsService = settingsService;
+        _autostartStateService = autostartStateService;
         _localizationService = localizationService;
         _protectionService = protectionService;
 
         _localizationService.LanguageChanged += OnLanguageChanged;
         _protectionService.StateChanged += OnProtectionStateChanged;
+        _autostartStateService.StatusChanged += OnAutostartStatusChanged;
+        ApplyAutostartStatus(_autostartStateService.Status);
 
         _isSpanishSelected = _localizationService.CurrentLanguage == "es";
         _isEnglishSelected = !_isSpanishSelected;
-        _ = RefreshAutostartStatusAsync();
 
         var entryAssembly = Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly();
         var ver = entryAssembly.GetName().Version;
@@ -190,35 +200,59 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ToggleAutostart(bool enable)
+    private async Task ToggleAutostart(bool? enable)
     {
-        var result = await _settingsService.SetAutostartAsync(enable);
-        var status = await _settingsService.GetAutostartStatusAsync();
-        IsAutostartEnabled = status.IsEnabled;
-        AutostartStatusMessage = GetAutostartStatusMessage(status);
-        if (!result.Success)
+        if (enable is not bool requestedState || IsAutostartBusy)
+            return;
+
+        IsAutostartBusy = true;
+        try
         {
-            Log.Warning("Failed to update autostart from settings: {Error}", result.ErrorMessage);
-            if (status.State is not (AutostartState.DisabledByUser or AutostartState.DisabledByPolicy))
-                AutostartStatusMessage = result.ErrorMessage ??
-                    _localizationService.GetString("ErrorAutostart", "Failed to update autostart setting");
+            var result = await _autostartStateService.SetAutostartAsync(requestedState);
+            if (!result.Success)
+            {
+                Log.Warning("Failed to update autostart from settings: {Error}", result.ErrorMessage);
+                if (string.IsNullOrWhiteSpace(AutostartStatusMessage))
+                {
+                    AutostartStatusMessage = result.ErrorMessage ??
+                        _localizationService.GetString("ErrorAutostart", "Failed to update autostart setting");
+                }
+            }
+        }
+        finally
+        {
+            IsAutostartBusy = false;
         }
     }
 
-    private async Task RefreshAutostartStatusAsync()
+    public async Task RefreshAutostartStatusAsync()
     {
-        try
-        {
-            var status = await _settingsService.GetAutostartStatusAsync();
-            IsAutostartEnabled = status.IsEnabled;
-            AutostartStatusMessage = GetAutostartStatusMessage(status);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Failed to read the effective autostart state for Settings");
-            IsAutostartEnabled = false;
-            AutostartStatusMessage = ex.Message;
-        }
+        await _autostartStateService.RefreshAsync();
+    }
+
+    private void OnAutostartStatusChanged(AutostartStatus status)
+    {
+        if (_disposed)
+            return;
+
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            ApplyAutostartStatus(status);
+        else
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!_disposed)
+                    ApplyAutostartStatus(status);
+            });
+    }
+
+    private void ApplyAutostartStatus(AutostartStatus status)
+    {
+        IsAutostartStatusKnown = status.State is AutostartState.Enabled
+            or AutostartState.Disabled
+            or AutostartState.DisabledByUser
+            or AutostartState.DisabledByPolicy;
+        IsAutostartEnabled = IsAutostartStatusKnown ? status.IsEnabled : null;
+        AutostartStatusMessage = GetAutostartStatusMessage(status);
     }
 
     private string GetAutostartStatusMessage(AutostartStatus status) =>
@@ -231,13 +265,23 @@ public sealed partial class SettingsViewModel : ObservableObject
             AutostartState.DisabledByPolicy => _localizationService.GetString(
                 "AutostartDisabledByPolicy",
                 "Windows policy prevents PrivGvard from starting automatically."),
-            _ => status.Message ?? _localizationService.GetString(
-                "ErrorAutostart",
-                "Failed to update autostart setting")
+            _ => string.IsNullOrWhiteSpace(status.Message)
+                ? _localizationService.GetString(
+                    "AutostartStateUnknown",
+                    "The effective Windows startup state could not be verified.")
+                : $"{_localizationService.GetString(
+                    "AutostartStateUnknown",
+                    "The effective Windows startup state could not be verified.")} {status.Message}"
         };
 
     partial void OnAutostartStatusMessageChanged(string value) =>
         OnPropertyChanged(nameof(HasAutostartStatusMessage));
+
+    partial void OnIsAutostartStatusKnownChanged(bool value) =>
+        OnPropertyChanged(nameof(IsAutostartToggleEnabled));
+
+    partial void OnIsAutostartBusyChanged(bool value) =>
+        OnPropertyChanged(nameof(IsAutostartToggleEnabled));
 
     [RelayCommand]
     public async Task RefreshDiagnosticsAsync()
@@ -325,7 +369,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             OnPropertyChanged(nameof(StartupDescription));
             OnPropertyChanged(nameof(StartWithSystemLabel));
             OnPropertyChanged(nameof(AutostartStatusMessage));
-            _ = RefreshAutostartStatusAsync();
+            ApplyAutostartStatus(_autostartStateService.Status);
             OnPropertyChanged(nameof(LanguageTitle));
             OnPropertyChanged(nameof(LanguageDescription));
 
@@ -369,5 +413,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 
             _ = RefreshDiagnosticsAsync();
         });
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _localizationService.LanguageChanged -= OnLanguageChanged;
+        _protectionService.StateChanged -= OnProtectionStateChanged;
+        _autostartStateService.StatusChanged -= OnAutostartStatusChanged;
     }
 }

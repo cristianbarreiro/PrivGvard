@@ -153,6 +153,7 @@
                                         <TextBlock Text="{Binding StartupDescription}" FontSize="11" Foreground="#888888" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <CheckBox Grid.Column="1" IsChecked="{Binding IsAutostartEnabled}"
+                                              IsThreeState="True" IsEnabled="{Binding IsAutostartToggleEnabled}"
                                               Content="{Binding StartWithSystemLabel}" FontSize="12" Foreground="#CCCCCC"
                                               Command="{Binding ToggleAutostartCommand}" CommandParameter="{Binding $self.IsChecked}"
                                               VerticalAlignment="Center" Margin="10,0,0,0" />

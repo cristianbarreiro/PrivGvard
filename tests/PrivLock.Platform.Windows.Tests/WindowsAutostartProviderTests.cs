@@ -58,12 +58,10 @@ public sealed class WindowsAutostartProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task Win32LegacyMigration_UsesRealRegistryAndPreservesDisabledStateWithoutDuplicates()
+    public async Task Win32LegacyMigration_UsesRealRegistryWithoutCreatingDuplicates()
     {
         using (var runKey = Registry.CurrentUser.OpenSubKey(_testRunKeyPath, writable: true))
             runKey!.SetValue("PrivLock", "\"C:\\Old\\PrivLock.exe\" --minimized", RegistryValueKind.String);
-        using (var approvedKey = Registry.CurrentUser.OpenSubKey(_testStartupApprovedKeyPath, writable: true))
-            approvedKey!.SetValue("PrivLock", new byte[] { 0x03, 0, 0 }, RegistryValueKind.Binary);
 
         var provider = CreateRegistryProvider();
         var result = await provider.MigrateLegacyEntriesAsync();
@@ -72,10 +70,6 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         using var verifyRun = Registry.CurrentUser.OpenSubKey(_testRunKeyPath);
         Assert.Equal($"\"{_dummyExePath}\" --minimized", verifyRun!.GetValue("PrivGvard"));
         Assert.Null(verifyRun.GetValue("PrivLock"));
-        using var verifyApproval = Registry.CurrentUser.OpenSubKey(_testStartupApprovedKeyPath);
-        Assert.Equal(new byte[] { 0x03, 0, 0 }, verifyApproval!.GetValue("PrivGvard"));
-        Assert.Null(verifyApproval.GetValue("PrivLock"));
-        Assert.Equal(AutostartState.DisabledByUser, (await provider.GetAutostartStatusAsync()).State);
     }
 
     [Fact]
@@ -168,6 +162,22 @@ public sealed class WindowsAutostartProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task GetStatus_RejectsEmptyOrNonBinaryApprovalValues()
+    {
+        using (var runKey = Registry.CurrentUser.OpenSubKey(_testRunKeyPath, writable: true))
+            runKey!.SetValue("PrivGvard", $"\"{_dummyExePath}\" --minimized", RegistryValueKind.String);
+        using (var approvedKey = Registry.CurrentUser.OpenSubKey(_testStartupApprovedKeyPath, writable: true))
+            approvedKey!.SetValue("PrivGvard", Array.Empty<byte>(), RegistryValueKind.Binary);
+
+        var provider = CreateRegistryProvider();
+        Assert.Equal(AutostartState.Failed, (await provider.GetAutostartStatusAsync()).State);
+
+        using (var approvedKey = Registry.CurrentUser.OpenSubKey(_testStartupApprovedKeyPath, writable: true))
+            approvedKey!.SetValue("PrivGvard", "unexpected type", RegistryValueKind.String);
+        Assert.Equal(AutostartState.Failed, (await provider.GetAutostartStatusAsync()).State);
+    }
+
+    [Fact]
     public async Task EnableAutostart_FailsOnRegistryWriteReadAndPostWriteVerificationErrors()
     {
         var writeFailure = new MemoryRegistry { FailWrites = true };
@@ -189,12 +199,12 @@ public sealed class WindowsAutostartProviderTests : IDisposable
     public async Task EnableAutostart_RespectsWindowsStartupApprovedUserDisable()
     {
         var registry = new MemoryRegistry();
-        registry.ApprovedValues["PrivGvard"] = [0x03, 0, 0];
+        registry.SetApproval("PrivGvard", [0xA1, 0x4B], WindowsStartupApprovalState.DisabledByUser);
         var result = await CreateProvider(registry).EnableAutostartAsync();
 
         Assert.False(result.Success);
         Assert.Equal(AutostartState.DisabledByUser, (await CreateProvider(registry).GetAutostartStatusAsync()).State);
-        Assert.Equal(new byte[] { 0x03, 0, 0 }, registry.ApprovedValues["PrivGvard"]);
+        Assert.Equal(new byte[] { 0xA1, 0x4B }, registry.ApprovedValues["PrivGvard"]);
     }
 
     [Fact]
@@ -202,7 +212,7 @@ public sealed class WindowsAutostartProviderTests : IDisposable
     {
         var registry = new MemoryRegistry();
         registry.RunValues["PrivLock"] = "\"C:\\Old\\PrivLock.exe\" --minimized";
-        registry.ApprovedValues["PrivLock"] = [0x03, 0, 0];
+        registry.SetApproval("PrivLock", [0xB3, 0x17], WindowsStartupApprovalState.DisabledByUser);
         registry.RunValues["OtherApp"] = "other-app.exe";
 
         var provider = CreateProvider(registry);
@@ -221,13 +231,13 @@ public sealed class WindowsAutostartProviderTests : IDisposable
     {
         var registry = new MemoryRegistry();
         registry.RunValues["PrivLock"] = "\"C:\\Old\\PrivLock.exe\" --minimized";
-        registry.ApprovedValues["PrivLock"] = [0x03, 0, 0];
+        registry.SetApproval("PrivLock", [0xC5, 0x28], WindowsStartupApprovalState.DisabledByUser);
         var provider = CreateProvider(registry);
 
         var result = await provider.MigrateLegacyEntriesAsync();
 
         Assert.True(result.Success, result.ErrorMessage);
-        Assert.Equal(new byte[] { 0x03, 0, 0 }, registry.ApprovedValues["PrivGvard"]);
+        Assert.Equal(new byte[] { 0xC5, 0x28 }, registry.ApprovedValues["PrivGvard"]);
         Assert.Equal(AutostartState.DisabledByUser, (await provider.GetAutostartStatusAsync()).State);
     }
 
@@ -252,8 +262,8 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         var registry = new MemoryRegistry();
         registry.RunValues["PrivLock"] = "\"C:\\Old\\PrivLock.exe\" --minimized";
         registry.RunValues["PrivGvard"] = $"\"{_dummyExePath}\" --minimized";
-        registry.ApprovedValues["PrivLock"] = [0x03, 0, 0];
-        registry.ApprovedValues["PrivGvard"] = [0x02, 0, 0];
+        registry.SetApproval("PrivLock", [0xC5, 0x28], WindowsStartupApprovalState.DisabledByUser);
+        registry.SetApproval("PrivGvard", [0xE9, 0x4A], WindowsStartupApprovalState.Enabled);
         var provider = CreateProvider(registry);
 
         var result = await provider.MigrateLegacyEntriesAsync();
@@ -262,8 +272,8 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         Assert.Contains("conflicting Windows user states", result.ErrorMessage);
         Assert.Equal("\"C:\\Old\\PrivLock.exe\" --minimized", registry.RunValues["PrivLock"]);
         Assert.Equal($"\"{_dummyExePath}\" --minimized", registry.RunValues["PrivGvard"]);
-        Assert.Equal(new byte[] { 0x03, 0, 0 }, registry.ApprovedValues["PrivLock"]);
-        Assert.Equal(new byte[] { 0x02, 0, 0 }, registry.ApprovedValues["PrivGvard"]);
+        Assert.Equal(new byte[] { 0xC5, 0x28 }, registry.ApprovedValues["PrivLock"]);
+        Assert.Equal(new byte[] { 0xE9, 0x4A }, registry.ApprovedValues["PrivGvard"]);
     }
 
     [Fact]
@@ -272,7 +282,7 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         var registry = new MemoryRegistry();
         registry.RunValues["PrivLock"] = "\"C:\\Old\\PrivLock.exe\" --minimized";
         registry.RunValues["PrivGvard"] = $"\"{_dummyExePath}\" --minimized";
-        registry.ApprovedValues["PrivLock"] = [0x03, 0, 0];
+        registry.SetApproval("PrivLock", [0xF1, 0x5B], WindowsStartupApprovalState.DisabledByUser);
         var provider = CreateProvider(registry);
 
         var result = await provider.MigrateLegacyEntriesAsync();
@@ -281,8 +291,27 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         Assert.False(registry.RunValues.ContainsKey("PrivLock"));
         Assert.Equal($"\"{_dummyExePath}\" --minimized", registry.RunValues["PrivGvard"]);
         Assert.False(registry.ApprovedValues.ContainsKey("PrivLock"));
-        Assert.Equal(new byte[] { 0x03, 0, 0 }, registry.ApprovedValues["PrivGvard"]);
+        Assert.Equal(new byte[] { 0xF1, 0x5B }, registry.ApprovedValues["PrivGvard"]);
         Assert.Equal(AutostartState.DisabledByUser, (await provider.GetAutostartStatusAsync()).State);
+    }
+
+    [Fact]
+    public async Task GetStatus_RefreshesAfterExternalRunAndApprovalStateChanges()
+    {
+        var registry = new MemoryRegistry();
+        registry.RunValues["PrivGvard"] = $"\"{_dummyExePath}\" --minimized";
+        var provider = CreateProvider(registry);
+
+        Assert.Equal(AutostartState.Enabled, (await provider.GetAutostartStatusAsync()).State);
+
+        registry.SetApproval("PrivGvard", [0x71, 0x22], WindowsStartupApprovalState.DisabledByUser);
+        Assert.Equal(AutostartState.DisabledByUser, (await provider.GetAutostartStatusAsync()).State);
+
+        registry.ApprovalStates["PrivGvard"] = WindowsStartupApprovalState.Enabled;
+        Assert.Equal(AutostartState.Enabled, (await provider.GetAutostartStatusAsync()).State);
+
+        registry.RunValues.Remove("PrivGvard");
+        Assert.Equal(AutostartState.Disabled, (await provider.GetAutostartStatusAsync()).State);
     }
 
     [Theory]
@@ -348,7 +377,7 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         var registry = new MemoryRegistry();
         registry.RunValues["PrivGvard"] = "\"C:\\OldPackageVersion\\PrivGvard.exe\" --minimized";
         registry.RunValues["PrivLock"] = "\"C:\\OldPackageVersion\\PrivLock.exe\" --minimized";
-        registry.ApprovedValues["PrivGvard"] = [0x03, 0, 0];
+        registry.SetApproval("PrivGvard", [0x82, 0x6C], WindowsStartupApprovalState.DisabledByUser);
         var startupTask = new FakeStartupTask(WindowsStartupTaskState.Enabled)
         {
             StateAfterDisable = WindowsStartupTaskState.DisabledByUser
@@ -376,13 +405,7 @@ public sealed class WindowsAutostartProviderTests : IDisposable
             runKey.SetValue("PrivLock", "\"C:\\OldPackageVersion\\PrivLock.exe\" --minimized", RegistryValueKind.String);
         }
 
-        using (var approvedKey = Registry.CurrentUser.OpenSubKey(_testStartupApprovedKeyPath, writable: true))
-            approvedKey!.SetValue("PrivGvard", new byte[] { 0x03, 0, 0 }, RegistryValueKind.Binary);
-
-        var startupTask = new FakeStartupTask(WindowsStartupTaskState.Enabled)
-        {
-            StateAfterDisable = WindowsStartupTaskState.DisabledByUser
-        };
+        var startupTask = new FakeStartupTask(WindowsStartupTaskState.Enabled);
         var provider = new WindowsAutostartProvider(
             new WindowsAutostartRegistry(_testRunKeyPath, _testStartupApprovedKeyPath),
             startupTask,
@@ -395,10 +418,7 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         using var verifyRun = Registry.CurrentUser.OpenSubKey(_testRunKeyPath);
         Assert.Null(verifyRun!.GetValue("PrivGvard"));
         Assert.Null(verifyRun.GetValue("PrivLock"));
-        using var verifyApproval = Registry.CurrentUser.OpenSubKey(_testStartupApprovedKeyPath);
-        Assert.Null(verifyApproval!.GetValue("PrivGvard"));
-        Assert.Null(verifyApproval.GetValue("PrivLock"));
-        Assert.Equal(AutostartState.DisabledByUser, (await provider.GetAutostartStatusAsync()).State);
+        Assert.Equal(AutostartState.Enabled, (await provider.GetAutostartStatusAsync()).State);
     }
 
     [Fact]
@@ -424,7 +444,7 @@ public sealed class WindowsAutostartProviderTests : IDisposable
     {
         var registry = new MemoryRegistry();
         registry.RunValues["PrivGvard"] = "\"C:\\OldPackageVersion\\PrivGvard.exe\" --minimized";
-        registry.ApprovedValues["PrivGvard"] = [0x03, 0, 0];
+        registry.SetApproval("PrivGvard", [0x93, 0x7D], WindowsStartupApprovalState.DisabledByUser);
         var startupTask = new FakeStartupTask(WindowsStartupTaskState.EnabledByPolicy);
         var provider = CreateProvider(registry, packaged: true, startupTask: startupTask);
 
@@ -433,7 +453,7 @@ public sealed class WindowsAutostartProviderTests : IDisposable
         Assert.False(result.Success);
         Assert.Contains("Windows policy enables", result.ErrorMessage);
         Assert.Equal("\"C:\\OldPackageVersion\\PrivGvard.exe\" --minimized", registry.RunValues["PrivGvard"]);
-        Assert.Equal(new byte[] { 0x03, 0, 0 }, registry.ApprovedValues["PrivGvard"]);
+        Assert.Equal(new byte[] { 0x93, 0x7D }, registry.ApprovedValues["PrivGvard"]);
         Assert.Equal(0, startupTask.DisableCount);
     }
 
@@ -486,9 +506,19 @@ public sealed class WindowsAutostartProviderTests : IDisposable
     {
         public Dictionary<string, object?> RunValues { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, byte[]> ApprovedValues { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, WindowsStartupApprovalState> ApprovalStates { get; } = new(StringComparer.OrdinalIgnoreCase);
         public bool FailReads { get; init; }
         public bool FailWrites { get; init; }
         public bool IgnoreWrites { get; init; }
+
+        public void SetApproval(
+            string name,
+            byte[] opaqueValue,
+            WindowsStartupApprovalState state)
+        {
+            ApprovedValues[name] = opaqueValue;
+            ApprovalStates[name] = state;
+        }
 
         public object? ReadRunValue(string name)
         {
@@ -517,11 +547,24 @@ public sealed class WindowsAutostartProviderTests : IDisposable
             return ApprovedValues.TryGetValue(name, out var value) ? value : null;
         }
 
+        public WindowsStartupApprovalSnapshot? ReadStartupApproval(string name)
+        {
+            var value = ReadStartupApprovedValue(name);
+            if (value == null)
+                return null;
+
+            var state = ApprovalStates.TryGetValue(name, out var configuredState)
+                ? configuredState
+                : WindowsStartupApprovalState.Enabled;
+            return new WindowsStartupApprovalSnapshot(value, state);
+        }
+
         public void DeleteStartupApprovedValue(string name)
         {
             if (FailWrites)
                 throw new InvalidOperationException("registry write failure");
             ApprovedValues.Remove(name);
+            ApprovalStates.Remove(name);
         }
 
         public void WriteStartupApprovedValue(string name, byte[] value)
@@ -529,7 +572,17 @@ public sealed class WindowsAutostartProviderTests : IDisposable
             if (FailWrites)
                 throw new InvalidOperationException("registry write failure");
             if (!IgnoreWrites)
+            {
+                var source = ApprovedValues.FirstOrDefault(entry =>
+                    !entry.Key.Equals(name, StringComparison.OrdinalIgnoreCase) &&
+                    ReferenceEquals(entry.Value, value));
+                if (source.Value != null &&
+                    ApprovalStates.TryGetValue(source.Key, out var sourceState))
+                {
+                    ApprovalStates[name] = sourceState;
+                }
                 ApprovedValues[name] = value;
+            }
         }
 
         private void ThrowIfReadFails()

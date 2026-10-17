@@ -13,10 +13,11 @@ public sealed partial class MainViewModel : ObservableObject
     private static readonly ILogger Log = Serilog.Log.ForContext<MainViewModel>();
 
     private readonly ProtectionService _protectionService;
-    private readonly SettingsService _settingsService;
+    private readonly AutostartStateService _autostartStateService;
     private readonly LocalizationService _localizationService;
 
     private bool _isUpdating;
+    private bool _disposed;
 
     [ObservableProperty]
     private string _appTitle = "PrivGvard";
@@ -153,7 +154,10 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isEnglishSelected;
 
     [ObservableProperty]
-    private bool _isAutostartEnabled;
+    private bool? _isAutostartEnabled;
+
+    [ObservableProperty]
+    private string _autostartStatusMessage = "";
 
     [ObservableProperty]
     private string _platformName = "";
@@ -202,19 +206,20 @@ public sealed partial class MainViewModel : ObservableObject
 
     public MainViewModel(
         ProtectionService protectionService,
-        SettingsService settingsService,
+        AutostartStateService autostartStateService,
         LocalizationService localizationService)
     {
         _protectionService = protectionService;
-        _settingsService = settingsService;
+        _autostartStateService = autostartStateService;
         _localizationService = localizationService;
 
         _protectionService.StateChanged += OnProtectionStateChanged;
+        _autostartStateService.StatusChanged += OnAutostartStatusChanged;
         _localizationService.LanguageChanged += OnLanguageChanged;
 
         _isSpanishSelected = _localizationService.CurrentLanguage == "es";
         _isEnglishSelected = !_isSpanishSelected;
-        _ = RefreshAutostartStatusAsync();
+        ApplyAutostartStatus(_autostartStateService.Status);
 
         UpdatePlatformAndCapabilities();
 
@@ -691,32 +696,39 @@ public sealed partial class MainViewModel : ObservableObject
             ShowError(result.ErrorMessage ?? _localizationService.GetString("ErrorLanguagePreference", "Failed to save language preference"));
     }
 
-    [RelayCommand]
-    private async Task ToggleAutostart(bool enable)
+    private void OnAutostartStatusChanged(AutostartStatus status)
     {
-        if (_isUpdating) return;
-        var result = await _settingsService.SetAutostartAsync(enable);
-        var status = await _settingsService.GetAutostartStatusAsync();
-        IsAutostartEnabled = status.IsEnabled;
-        if (!result.Success)
-        {
-            ShowError(status.Message ?? result.ErrorMessage ??
-                _localizationService.GetString("ErrorAutostart", "Failed to update autostart setting"));
-        }
+        if (_disposed)
+            return;
+
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            ApplyAutostartStatus(status);
+        else
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!_disposed)
+                    ApplyAutostartStatus(status);
+            });
     }
 
-    private async Task RefreshAutostartStatusAsync()
+    private void ApplyAutostartStatus(AutostartStatus status)
     {
-        try
-        {
-            var status = await _settingsService.GetAutostartStatusAsync();
-            IsAutostartEnabled = status.IsEnabled;
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Failed to read the effective autostart state");
-            IsAutostartEnabled = false;
-        }
+        IsAutostartEnabled = IsAutostartStateKnown(status.State) ? status.IsEnabled : null;
+        AutostartStatusMessage = status.Message ?? "";
+    }
+
+    private static bool IsAutostartStateKnown(AutostartState state) =>
+        state is AutostartState.Enabled
+            or AutostartState.Disabled
+            or AutostartState.DisabledByUser
+            or AutostartState.DisabledByPolicy;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _protectionService.StateChanged -= OnProtectionStateChanged;
+        _autostartStateService.StatusChanged -= OnAutostartStatusChanged;
+        _localizationService.LanguageChanged -= OnLanguageChanged;
     }
 
     private void ShowError(string msg)
